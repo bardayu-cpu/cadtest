@@ -1,6 +1,6 @@
 # 户型识别测试基准
 
-Issue #12 只标注 `floorplan-a.jpg`；`floorplan-b.jpg` 尚未标注，因此本次不会进入评分。基准脚本自动枚举所有 `fixtures/*.expected.json`。
+Issue #12 只标注 `floorplan-a.jpg`；`floorplan-b.jpg` 尚未标注。Issue #13 的基准脚本自动枚举 `fixtures/floorplan-*.jpg/jpeg/png`，两张图均调用实际识别管线，仅有对应 `expected.json` 的图进入评分。
 
 ## 数据与人工校对
 
@@ -53,12 +53,14 @@ nvm use
 npm ci
 npm run overlay -- fixtures/floorplan-a.jpg fixtures/floorplan-a.expected.json tmp/floorplan-a.overlay.png
 npm run bench:recognize
+npm run overlay -- fixtures/floorplan-a.jpg tmp/floorplan-a.recognized.json tmp/floorplan-a.recognized.png
+npm run overlay -- fixtures/floorplan-b.jpg tmp/floorplan-b.recognized.json tmp/floorplan-b.recognized.png
 npm test
 ```
 
 叠加图青色为墙中心线及透明墙厚，橙色为门（包括推拉门与门洞），品红为窗，绿色为房间。脚本也可接受任意符合 `RecognitionData` 的识别结果 JSON。只能输出到 `tmp/` 内，自动生成本地 `tmp/.gitignore` 防止误提交图片；PNG 作为 PR 评论附件上传。
 
-评分目前使用**空识别结果占位**，因此墙与现有门窗类型的召回率、准确率为 0，房间数为 0/9，比例尺为 N/A。这不是识别算法性能结论。后续将脚本中创建占位 `predicted` 的位置替换为识别管线即可。
+评分使用 `recognizeFloorPlan` 的真实比例尺和墙体结果；识别代码不读取标准答案。`tmp/bench-recognize.json` 与 `.md` 保存机器、评分和耗时，`tmp/*.recognized.json` 保存诊断与自动墙体。门窗、房间属于后续 Issue，当前只报告比例尺与墙体；B 图无标准答案，评分明确显示 N/A。实现与当前差距见 `src/recognize/README.md`。
 
 评分定义：比例尺为相对于标准答案的绝对相对误差；未检测或无效值返回 `null`。墙的方向无正反之分，角差严格小于 3°，整段中心线对称 Hausdorff 距离严格小于 100 mm，因此短碎片或同一无限直线上的远端段不能命中。门窗按类型比较世界坐标中的中心，距离严格小于 200 mm，墙编号无需相同。房间支持凹多边形、反向绕序，以 IoU ≥ 0.8 为几何匹配，再统计其中类型一致的数量。三类元素均使用最大基数二分图一对一匹配，禁止重复计分。
 
