@@ -8,15 +8,14 @@ import { downloadProject } from '@/model/download';
 
 export function ProjectEditor({ id }: { id: string }) {
   const state = useProjectStore((store) => store);
-  const project = state.projects.find((item) => item.id === id);
-  const storedId = project?.id;
+  const project = state.currentProject?.id === id ? state.currentProject : null;
   const { hydration, openProject, closeProject } = state;
   useEffect(() => {
-    if (hydration === 'ready' && storedId) {
-      openProject(id);
+    if (hydration === 'ready') {
+      void openProject(id);
       return closeProject;
     }
-  }, [id, storedId, hydration, openProject, closeProject]);
+  }, [id, hydration, openProject, closeProject]);
 
   function rename(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -32,8 +31,18 @@ export function ProjectEditor({ id }: { id: string }) {
       </Link>
       <h1 className="text-3xl font-semibold">项目编辑器</h1>
       <StorageStatus />
-      {state.hydration === 'ready' && !project && (
-        <p role="alert">项目不存在或已被删除，请返回项目列表。</p>
+      {state.projectLoad === 'loading' && <p role="status">正在打开项目…</p>}
+      {state.projectError && (
+        <div role="alert">
+          <p>{state.projectError}</p>
+          <button
+            type="button"
+            className="mt-2 underline"
+            onClick={() => void openProject(id)}
+          >
+            重试打开
+          </button>
+        </div>
       )}
       {project && (
         <>

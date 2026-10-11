@@ -1,23 +1,29 @@
 import { createStore } from 'zustand/vanilla';
 import { createProject, parseProjectJson, type ImportResult } from './project';
-import { projectSchema, projectsSchema } from './schema';
+import { projectSchema, projectIndexSchema } from './schema';
 import { createProjectStorage, type ProjectStorage } from './storage';
 import type {
   Anchor,
   FurnitureItem,
   Opening,
   Project,
+  ProjectIndexEntry,
   Room,
   Wall,
 } from './types';
 
 export const HISTORY_LIMIT = 100;
+export const AUTOSAVE_DELAY = 400;
+type Write = { project: Project; updatedAt: string } | { deleted: true };
 type Collection = 'walls' | 'openings' | 'rooms' | 'furniture' | 'anchors';
 type Entity = Wall | Opening | Room | FurnitureItem | Anchor;
 type Patch<T> = Partial<Omit<T, 'id' | 'source'>>;
 
 export interface ProjectState {
-  projects: Project[];
+  projects: ProjectIndexEntry[];
+  currentProject: Project | null;
+  projectLoad: 'idle' | 'loading' | 'ready' | 'error';
+  projectError: string | null;
   activeProjectId: string | null;
   past: Project[];
   future: Project[];
@@ -29,7 +35,8 @@ export interface ProjectState {
   retrySave(): void;
   createProject(name?: string): string;
   deleteProject(id: string): void;
-  openProject(id: string): void;
+  readProject(id: string): Promise<Project>;
+  openProject(id: string): Promise<void>;
   closeProject(): void;
   updateProject(patch: Partial<Omit<Project, 'id' | 'version'>>): void;
   importProject(text: string, overwrite?: boolean): ImportResult;
@@ -56,8 +63,10 @@ export function createProjectStore(
   storage: ProjectStorage = createProjectStorage(),
 ) {
   let hydrationTask: Promise<void> | undefined;
-  let writes = Promise.resolve();
-  let pendingWrites = 0;
+  const pending = new Map<string, Write>();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let writing: Promise<boolean> | undefined;
+  let openRequest = 0;
 
   const store = createStore<ProjectState>()((set, get) => {
     function requireReady() {
@@ -67,23 +76,20 @@ export function createProjectStore(
     function activeProject() {
       requireReady();
       const state = get();
-      const project = state.projects.find(
-        (item) => item.id === state.activeProjectId,
-      );
+      const project = state.currentProject;
       if (!project) throw new Error('请先打开一个项目。');
       return project;
     }
     function commit(next: Project) {
       const previous = activeProject();
       const parsed = projectSchema.parse(next);
-      if (JSON.stringify(previous) === JSON.stringify(parsed)) return;
+
       set((state) => ({
-        projects: state.projects.map((item) =>
-          item.id === previous.id ? parsed : item,
-        ),
+        currentProject: parsed,
         past: [...state.past, previous].slice(-HISTORY_LIMIT),
         future: [],
       }));
+      queueProject(parsed);
     }
     function add(collection: Collection, entity: Entity) {
       const project = activeProject();
@@ -94,8 +100,9 @@ export function createProjectStore(
     }
     function update(collection: Collection, id: string, patch: object) {
       const project = activeProject();
-      if (!project[collection].some((item) => item.id === id))
-        throw new Error('元素不存在。');
+      const item = project[collection].find((item) => item.id === id);
+      if (!item) throw new Error('元素不存在。');
+      if (item.source === 'manual' && !hasChanges(item, patch)) return;
       commit({
         ...project,
         [collection]: project[collection].map((item) =>
@@ -115,21 +122,36 @@ export function createProjectStore(
       if (collection === 'walls') {
         next.openings = project.openings.filter((item) => item.wallId !== id);
       }
-      if (collection === 'anchors') {
+      if (collection === 'rooms') {
+        next.anchors = project.anchors.filter((item) => item.roomId !== id);
+        next.furniture = project.furniture.map((item) => {
+          if (item.roomId !== id) return item;
+          const remaining = { ...item, source: 'manual' as const };
+          delete remaining.roomId;
+          return remaining;
+        });
+      }
+      if (collection === 'anchors' || collection === 'rooms') {
+        const remaining = new Set(next.anchors.map((item) => item.id));
         next.anchors = next.anchors.map((item) => {
-          const links = item.links.filter((link) => link.targetAnchorId !== id);
+          const links = item.links.filter((link) =>
+            remaining.has(link.targetAnchorId),
+          );
           return links.length === item.links.length
             ? item
             : { ...item, links, source: 'manual' };
         });
-        next.panoramas = project.panoramas.filter(
-          (item) => item.anchorId !== id,
+        next.panoramas = project.panoramas.filter((item) =>
+          remaining.has(item.anchorId),
         );
       }
       commit(next);
     }
     return {
       projects: [],
+      currentProject: null,
+      projectLoad: 'idle',
+      projectError: null,
       activeProjectId: null,
       past: [],
       future: [],
@@ -142,8 +164,8 @@ export function createProjectStore(
         set({ hydration: 'loading', storageError: null });
         hydrationTask = Promise.resolve().then(async () => {
           try {
-            const saved = await storage.load();
-            const projects = projectsSchema.parse(
+            const saved = await storage.loadIndex();
+            const projects = projectIndexSchema.parse(
               saved === undefined ? [] : saved,
             );
             set({ projects, hydration: 'ready', storageError: null });
@@ -159,43 +181,106 @@ export function createProjectStore(
         });
         return hydrationTask;
       },
-      flush: async () => {
-        await writes;
-        return get().hydration === 'ready' && !get().storageError;
-      },
+      flush: flushWrites,
       retrySave: () => {
         requireReady();
-        enqueueSave(get().projects);
+        void flushWrites();
       },
       createProject: (name) => {
         requireReady();
         const project = createProject(name);
-        set((state) => ({
-          projects: [...state.projects, project],
+        openRequest += 1;
+        set({
+          currentProject: project,
           activeProjectId: project.id,
+          projectLoad: 'ready',
+          projectError: null,
           past: [],
           future: [],
-        }));
+        });
+        queueProject(project);
         return project.id;
       },
       deleteProject: (id) => {
         requireReady();
         if (!get().projects.some((item) => item.id === id)) return;
+        if (get().activeProjectId === id) openRequest += 1;
         set((state) => ({
           projects: state.projects.filter((item) => item.id !== id),
           ...(state.activeProjectId === id
-            ? { activeProjectId: null, past: [], future: [] }
+            ? {
+                activeProjectId: null,
+                currentProject: null,
+                projectLoad: 'idle',
+                projectError: null,
+                past: [],
+                future: [],
+              }
             : {}),
         }));
+        schedule(id, { deleted: true });
       },
-      openProject: (id) => {
+      readProject: async (id) => {
         requireReady();
         if (!get().projects.some((item) => item.id === id))
           throw new Error('项目不存在或已被删除。');
-        if (get().activeProjectId !== id)
-          set({ activeProjectId: id, past: [], future: [] });
+        const current = get().currentProject;
+        if (current?.id === id) return projectSchema.parse(current);
+        const dirty = pending.get(id);
+        if (dirty && 'project' in dirty)
+          return projectSchema.parse(dirty.project);
+        // A pending save may already have entered the serialized write queue.
+        if (writing) await writing;
+        if (!get().projects.some((item) => item.id === id))
+          throw new Error('项目不存在或已被删除。');
+        const latest = pending.get(id);
+        if (latest && 'project' in latest)
+          return projectSchema.parse(latest.project);
+        const project = projectSchema.parse(await storage.loadProject(id));
+        if (project.id !== id) throw new Error('项目编号与存储记录不一致。');
+        return project;
       },
-      closeProject: () => set({ activeProjectId: null, past: [], future: [] }),
+      openProject: async (id) => {
+        requireReady();
+        if (get().currentProject?.id === id) return;
+        const request = ++openRequest;
+        set({
+          activeProjectId: id,
+          currentProject: null,
+          projectLoad: 'loading',
+          projectError: null,
+          past: [],
+          future: [],
+        });
+        try {
+          const project = await get().readProject(id);
+          if (request !== openRequest) return;
+          set({
+            currentProject: project,
+            projectLoad: 'ready',
+            projectError: null,
+          });
+        } catch {
+          if (request !== openRequest) return;
+          set({
+            projectLoad: 'error',
+            projectError:
+              '无法打开项目：数据不存在或格式错误，请返回列表或重试。已有数据未被覆盖。',
+          });
+        }
+      },
+      closeProject: () => {
+        openRequest += 1;
+        set({
+          activeProjectId: null,
+          currentProject: null,
+          projectLoad: 'idle',
+          projectError: null,
+          past: [],
+          future: [],
+        });
+        void flushWrites();
+      },
       updateProject: (patch) => {
         const project = activeProject();
         // Entity changes must go through their actions to track manual edits.
@@ -206,6 +291,7 @@ export function createProjectStore(
             '请使用元素 action 修改墙体、门窗、房间、家具或锚点。',
           );
         }
+        if (!hasChanges(project, metadata)) return;
         commit({ ...project, ...metadata, id: project.id, version: 2 });
       },
       importProject: (text, overwrite = false) => {
@@ -220,16 +306,16 @@ export function createProjectStore(
             success: false,
             error: '相同编号的项目已存在，确认覆盖后才能导入。',
           };
-        set((state) => ({
-          projects: exists
-            ? state.projects.map((item) =>
-                item.id === project.id ? project : item,
-              )
-            : [...state.projects, project],
+        openRequest += 1;
+        set({
+          currentProject: project,
           activeProjectId: project.id,
+          projectLoad: 'ready',
+          projectError: null,
           past: [],
           future: [],
-        }));
+        });
+        queueProject(project);
         return result;
       },
       addWall: (wall) => add('walls', wall),
@@ -253,12 +339,11 @@ export function createProjectStore(
         const previous = state.past.at(-1);
         if (!previous) return;
         set({
-          projects: state.projects.map((item) =>
-            item.id === project.id ? previous : item,
-          ),
+          currentProject: previous,
           past: state.past.slice(0, -1),
           future: [project, ...state.future],
         });
+        queueProject(previous);
       },
       redo: () => {
         const project = activeProject();
@@ -266,39 +351,89 @@ export function createProjectStore(
         const next = state.future[0];
         if (!next) return;
         set({
-          projects: state.projects.map((item) =>
-            item.id === project.id ? next : item,
-          ),
+          currentProject: next,
           past: [...state.past, project].slice(-HISTORY_LIMIT),
           future: state.future.slice(1),
         });
+        queueProject(next);
       },
     };
   });
 
-  function enqueueSave(projects: Project[]) {
-    // Serialize writes: a slower earlier save must never overwrite a later edit.
-    const snapshot = structuredClone(projects);
-    pendingWrites += 1;
-    store.setState({ isSaving: true });
-    writes = writes.then(async () => {
-      try {
-        await storage.save(snapshot);
-        store.setState({ storageError: null });
-      } catch {
-        store.setState({
-          storageError:
-            '自动保存失败，修改仍保留在当前页面。请重试或导出 JSON 备份。',
-        });
-      } finally {
-        pendingWrites -= 1;
-        store.setState({ isSaving: pendingWrites > 0 });
-      }
-    });
+  function queueProject(project: Project) {
+    const updatedAt = new Date().toISOString();
+    const entry = { id: project.id, name: project.name, updatedAt };
+    store.setState((state) => ({
+      projects: [
+        ...state.projects.filter((item) => item.id !== project.id),
+        entry,
+      ],
+    }));
+    // Actions validate and detach their arguments; retain only the latest immutable
+    // snapshot per dirty project instead of cloning all projects on each edit.
+    schedule(project.id, { project, updatedAt });
   }
-  store.subscribe((state, previous) => {
-    if (previous.hydration === 'ready' && state.projects !== previous.projects)
-      enqueueSave(state.projects);
-  });
+  function schedule(id: string, write: Write) {
+    pending.set(id, write);
+    if (timer) clearTimeout(timer);
+    store.setState({ isSaving: true });
+    timer = setTimeout(() => {
+      timer = undefined;
+      void flushWrites();
+    }, AUTOSAVE_DELAY);
+  }
+  function flushWrites(): Promise<boolean> {
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    if (writing) return writing;
+    if (!pending.size)
+      return Promise.resolve(
+        store.getState().hydration === 'ready' &&
+          !store.getState().storageError,
+      );
+    // Start the first write immediately, including on visibilitychange/pagehide.
+    writing = (async () => {
+      let failed = false;
+      while (pending.size) {
+        const batch = [...pending];
+        pending.clear();
+        for (const [id, write] of batch) {
+          try {
+            if ('deleted' in write) await storage.delete(id);
+            else await storage.save(write.project, write.updatedAt);
+          } catch {
+            failed = true;
+            // Keep failed operations for retry, without replacing a newer edit.
+            if (!pending.has(id)) pending.set(id, write);
+          }
+        }
+        if (failed) break;
+      }
+      if (timer && !pending.size) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      store.setState({
+        isSaving: false,
+        storageError: failed
+          ? '自动保存失败，修改仍保留在当前页面。请重试或导出 JSON 备份。'
+          : null,
+      });
+      return !failed;
+    })().finally(() => {
+      writing = undefined;
+    });
+    return writing;
+  }
   return store;
+}
+
+function hasChanges(original: object, patch: object) {
+  // Compare only patched fields. Nested object patches may intentionally count
+  // as an edit; never stringify the project or any embedded image data.
+  return Object.entries(patch).some(
+    ([key, value]) => !Object.is(Reflect.get(original, key), value),
+  );
 }

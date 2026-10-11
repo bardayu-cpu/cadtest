@@ -127,3 +127,8 @@ export interface Project {
   panoramas: PanoramaResult[];
   publish?: { shareId: string; publishedAt: string; revoked: boolean };
 }
+export interface ProjectIndexEntry {
+  id: string;
+  name: string;
+  updatedAt: string;
+}

@@ -29,7 +29,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         );
       const action = getHistoryShortcut(event, editingText);
       const state = store.getState();
-      if (!action || state.hydration !== 'ready' || !state.activeProjectId)
+      if (!action || state.hydration !== 'ready' || !state.currentProject)
         return;
       if (
         action === 'undo' ? state.past.length === 0 : state.future.length === 0
@@ -38,8 +38,21 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       event.preventDefault();
       state[action]();
     }
+    function onHidden() {
+      if (document.visibilityState === 'hidden') void store.getState().flush();
+    }
+    function onPageHide() {
+      void store.getState().flush();
+    }
     document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
+    document.addEventListener('visibilitychange', onHidden);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('visibilitychange', onHidden);
+      window.removeEventListener('pagehide', onPageHide);
+      void store.getState().flush();
+    };
   }, [store]);
   return (
     <ProjectContext.Provider value={store}>{children}</ProjectContext.Provider>

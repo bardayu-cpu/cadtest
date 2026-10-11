@@ -2,6 +2,11 @@ import { expect, test } from '@playwright/test';
 import { completeProject } from '../helpers/project';
 import { exportProjectJson } from '../../src/model/project';
 
+// Compile the editor route before concurrent browser flows start in next dev.
+test.beforeAll(async ({ request }) => {
+  expect((await request.get('/project/example')).ok()).toBe(true);
+});
+
 async function waitForSave(page: import('@playwright/test').Page) {
   await expect(page.getByRole('status')).toHaveText('已保存到本机');
 }
@@ -107,4 +112,69 @@ test('rejects malformed and structurally invalid JSON with a Chinese message', a
   }
   await page.getByRole('button', { name: '新建项目', exact: true }).click();
   await expect(page).toHaveURL(/\/project\//);
+});
+
+for (const event of ['visibilitychange', 'pagehide'] as const) {
+  test(`flushes pending edits immediately on ${event}`, async ({ page }) => {
+    // Hold only the autosave debounce so the test proves that the event initiates
+    // a write, rather than passing after an ordinary timer-driven autosave.
+    await page.addInitScript(() => {
+      const original = window.setTimeout.bind(window);
+      Object.defineProperty(window, 'setTimeout', {
+        configurable: true,
+        value: (handler: TimerHandler, timeout?: number, ...args: unknown[]) =>
+          original(handler, timeout === 400 ? 60000 : timeout, ...args),
+      });
+    });
+    await page.goto('/');
+    await waitForSave(page);
+    await page.getByRole('button', { name: '新建项目', exact: true }).click();
+    await expect(page).toHaveURL(/\/project\//);
+    await expect(page.getByRole('button', { name: '保存名称' })).toBeEnabled();
+    await expect(page.getByRole('textbox', { name: '项目名称' })).toBeVisible();
+    const name = `即时保存 ${event}`;
+    await page.getByRole('textbox', { name: '项目名称' }).fill(name);
+    await page.getByRole('button', { name: '保存名称' }).click();
+    await expect(
+      page.getByRole('heading', { name, exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('status')).toHaveText('正在保存…');
+    await page.evaluate((eventName) => {
+      if (eventName === 'pagehide') {
+        window.dispatchEvent(new PageTransitionEvent('pagehide'));
+      } else {
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true,
+          value: 'hidden',
+        });
+        document.dispatchEvent(new Event('visibilitychange'));
+        Reflect.deleteProperty(document, 'visibilityState');
+      }
+    }, event);
+    await expect(page.getByRole('status')).toHaveText('已保存到本机', {
+      timeout: 2000,
+    });
+    await page.reload();
+    await expect(
+      page.getByRole('heading', { name, exact: true }),
+    ).toBeVisible();
+  });
+}
+
+test('rejects dangling references with a Chinese field message', async ({
+  page,
+}) => {
+  const project = completeProject();
+  project.openings[0].wallId = 'missing';
+  await page.goto('/');
+  await waitForSave(page);
+  await page.getByLabel('导入 JSON 项目').setInputFiles({
+    name: 'dangling.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(project)),
+  });
+  await expect(page.getByRole('main').getByRole('alert')).toContainText(
+    '门窗引用的墙体不存在（openings.0.wallId）',
+  );
+  await expect(page.getByRole('heading', { name: '暂无项目' })).toBeVisible();
 });

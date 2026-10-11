@@ -59,3 +59,103 @@ describe('project model and JSON', () => {
     expect(projectSchema.safeParse(project).success).toBe(false);
   });
 });
+
+const invalidReferences: {
+  name: string;
+  change(project: ReturnType<typeof completeProject>): void;
+  path: string;
+  message: string;
+}[] = [
+  {
+    name: 'opening wall',
+    change: (p) => {
+      p.openings[0].wallId = 'missing';
+    },
+    path: 'openings.0.wallId',
+    message: '门窗引用的墙体不存在',
+  },
+  {
+    name: 'equal opening heights',
+    change: (p) => {
+      p.openings[0].sillHeight = p.openings[0].headHeight;
+    },
+    path: 'openings.0.sillHeight',
+    message: '门窗底部高度必须小于顶部高度',
+  },
+  {
+    name: 'reversed opening heights',
+    change: (p) => {
+      p.openings[0].sillHeight = 3000;
+    },
+    path: 'openings.0.sillHeight',
+    message: '门窗底部高度必须小于顶部高度',
+  },
+  {
+    name: 'anchor room',
+    change: (p) => {
+      p.anchors[0].roomId = 'missing';
+    },
+    path: 'anchors.0.roomId',
+    message: '锚点引用的房间不存在',
+  },
+  {
+    name: 'hotspot target',
+    change: (p) => {
+      p.anchors[0].links[0].targetAnchorId = 'missing';
+    },
+    path: 'anchors.0.links.0.targetAnchorId',
+    message: '热点引用的锚点不存在',
+  },
+  {
+    name: 'self hotspot',
+    change: (p) => {
+      p.anchors[0].links[0].targetAnchorId = p.anchors[0].id;
+    },
+    path: 'anchors.0.links.0.targetAnchorId',
+    message: '热点不能指向自身锚点',
+  },
+  {
+    name: 'furniture room',
+    change: (p) => {
+      p.furniture[0].roomId = 'missing';
+    },
+    path: 'furniture.0.roomId',
+    message: '家具引用的房间不存在',
+  },
+  {
+    name: 'panorama anchor',
+    change: (p) => {
+      p.panoramas[0].anchorId = 'missing';
+    },
+    path: 'panoramas.0.anchorId',
+    message: '全景引用的锚点不存在',
+  },
+  {
+    name: 'approved floor plan',
+    change: (p) => {
+      p.approvedFloorPlanId = 'missing';
+    },
+    path: 'approvedFloorPlanId',
+    message: '已确认的彩平图不存在',
+  },
+];
+
+it.each(invalidReferences)(
+  'rejects an invalid $name reference with a Chinese field error',
+  ({ change, path, message }) => {
+    const project = completeProject();
+    change(project);
+    const result = parseProjectJson(JSON.stringify(project));
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain(path);
+      expect(result.error).toContain(message);
+    }
+  },
+);
+it('permits unassigned furniture and an unapproved floor plan', () => {
+  const project = completeProject();
+  delete project.furniture[0].roomId;
+  delete project.approvedFloorPlanId;
+  expect(projectSchema.safeParse(project).success).toBe(true);
+});

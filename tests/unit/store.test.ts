@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   createProjectStore,
   HISTORY_LIMIT,
@@ -7,16 +7,14 @@ import {
 import { exportProjectJson } from '../../src/model/project';
 import type { Project } from '../../src/model/types';
 import { completeProject } from '../helpers/project';
+import { memoryStorage } from '../helpers/storage';
 
 async function setup() {
   const project = completeProject();
-  const storage = {
-    load: vi.fn(async () => [project]),
-    save: vi.fn(async () => {}),
-  };
+  const storage = memoryStorage([project]);
   const store = createProjectStore(storage);
   await store.getState().hydrate();
-  store.getState().openProject(project.id);
+  await store.getState().openProject(project.id);
   return { store, project, storage };
 }
 const cases: {
@@ -68,7 +66,7 @@ describe('project store', () => {
     'adds, edits, removes and restores a $name, including auto/manual source',
     async (example) => {
       const { store, project } = await setup();
-      const current = () => store.getState().projects[0];
+      const current = () => store.getState().currentProject!;
       example.add(store.getState(), project);
       expect(example.entity(current())?.source).toBe('auto');
       expect(() => example.add(store.getState(), project)).toThrow(
@@ -90,19 +88,19 @@ describe('project store', () => {
   it('removes a wall and its openings together, and restores both in one undo', async () => {
     const { store, project } = await setup();
     store.getState().removeWall('wall-1');
-    expect(store.getState().projects[0].openings).toEqual([]);
+    expect(store.getState().currentProject!.openings).toEqual([]);
     store.getState().undo();
-    expect(store.getState().projects[0]).toEqual(project);
+    expect(store.getState().currentProject!).toEqual(project);
     await store.getState().flush();
   });
   it('removes anchor links and panoramas together, with full undo', async () => {
     const { store, project } = await setup();
     store.getState().removeAnchor('anchor-2');
-    expect(store.getState().projects[0].anchors[0].links).toEqual([]);
-    expect(store.getState().projects[0].anchors[0].source).toBe('manual');
-    expect(store.getState().projects[0].panoramas).toEqual([]);
+    expect(store.getState().currentProject!.anchors[0].links).toEqual([]);
+    expect(store.getState().currentProject!.anchors[0].source).toBe('manual');
+    expect(store.getState().currentProject!.panoramas).toEqual([]);
     store.getState().undo();
-    expect(store.getState().projects[0]).toEqual(project);
+    expect(store.getState().currentProject!).toEqual(project);
     await store.getState().flush();
   });
   it('supports more than 50 undo/redo steps and clears redo on a new edit', async () => {
@@ -110,14 +108,14 @@ describe('project store', () => {
     for (let index = 1; index <= 60; index++)
       store.getState().updateProject({ name: `项目 ${index}` });
     for (let index = 0; index < 60; index++) store.getState().undo();
-    expect(store.getState().projects[0]).toEqual(project);
+    expect(store.getState().currentProject!).toEqual(project);
     for (let index = 0; index < 60; index++) store.getState().redo();
-    expect(store.getState().projects[0].name).toBe('项目 60');
+    expect(store.getState().currentProject!.name).toBe('项目 60');
     store.getState().undo();
     store.getState().updateProject({ name: '另一修改' });
     expect(store.getState().future).toEqual([]);
     store.getState().redo();
-    expect(store.getState().projects[0].name).toBe('另一修改');
+    expect(store.getState().currentProject!.name).toBe('另一修改');
     await store.getState().flush();
   });
   it('bounds history and ignores no-op or invalid changes', async () => {
@@ -128,19 +126,19 @@ describe('project store', () => {
     expect(() =>
       store.getState().updateWall('wall-1', { thickness: -1 }),
     ).toThrow();
-    expect(store.getState().projects[0]).toEqual(project);
+    expect(store.getState().currentProject!).toEqual(project);
     for (let index = 1; index <= HISTORY_LIMIT + 10; index++)
       store.getState().updateProject({ name: `项目 ${index}` });
     expect(store.getState().past).toHaveLength(HISTORY_LIMIT);
     for (let index = 0; index < HISTORY_LIMIT; index++) store.getState().undo();
-    expect(store.getState().projects[0].name).toBe('项目 10');
+    expect(store.getState().currentProject!.name).toBe('项目 10');
     await store.getState().flush();
   });
   it('isolates project histories and clears the active project on deletion', async () => {
     const { store, project } = await setup();
     const id = store.getState().createProject('新项目');
     store.getState().updateProject({ name: '修改后' });
-    store.getState().openProject(project.id);
+    await store.getState().openProject(project.id);
     expect(store.getState().past).toEqual([]);
     store.getState().updateProject({ name: '原项目修改' });
     store.getState().undo();
@@ -165,7 +163,7 @@ describe('project store', () => {
       success: true,
       project,
     });
-    expect(store.getState().projects[0]).toEqual(project);
+    expect(store.getState().currentProject!).toEqual(project);
     expect(
       store
         .getState()
@@ -174,7 +172,7 @@ describe('project store', () => {
           true,
         ).success,
     ).toBe(true);
-    expect(store.getState().projects[0].name).toBe('导入覆盖');
+    expect(store.getState().currentProject!.name).toBe('导入覆盖');
     await store.getState().flush();
   });
   it('does not retain mutable references from action arguments', async () => {
@@ -182,7 +180,73 @@ describe('project store', () => {
     const wall = { ...project.walls[0], id: 'new', start: { x: 0, y: 0 } };
     store.getState().addWall(wall);
     wall.start.x = 999;
-    expect(store.getState().projects[0].walls[1].start.x).toBe(0);
+    expect(store.getState().currentProject!.walls[1].start.x).toBe(0);
     await store.getState().flush();
   });
+});
+
+it('removes room anchors, incoming hotspots and panoramas, unassigns furniture, and undoes atomically', async () => {
+  const project = completeProject();
+  project.rooms.push({ ...project.rooms[0], id: 'room-2', name: '卧室' });
+  project.anchors.push(
+    {
+      ...project.anchors[0],
+      id: 'anchor-3',
+      roomId: 'room-2',
+      links: [
+        ...project.anchors[0].links,
+        { targetAnchorId: 'anchor-1', yaw: 0, pitch: 0, label: '客厅' },
+        { targetAnchorId: 'anchor-4', yaw: 20, pitch: 0, label: '卧室' },
+      ],
+    },
+    { ...project.anchors[1], id: 'anchor-4', roomId: 'room-2' },
+  );
+  project.panoramas.push({
+    ...project.panoramas[0],
+    id: 'panorama-2',
+    anchorId: 'anchor-3',
+  });
+  project.furniture.push({
+    ...project.furniture[0],
+    id: 'furniture-2',
+    roomId: 'room-2',
+  });
+  const store = createProjectStore(memoryStorage([project]));
+  await store.getState().hydrate();
+  await store.getState().openProject(project.id);
+  store.getState().removeRoom('room-1');
+  const current = store.getState().currentProject!;
+  expect(current.rooms.map((item) => item.id)).toEqual(['room-2']);
+  expect(current.anchors.map((item) => item.id)).toEqual([
+    'anchor-3',
+    'anchor-4',
+  ]);
+  expect(current.anchors[0].links.map((item) => item.targetAnchorId)).toEqual([
+    'anchor-4',
+  ]);
+  expect(current.anchors[0].source).toBe('manual');
+  expect(current.anchors[1].source).toBe('auto');
+  expect(current.panoramas.map((item) => item.id)).toEqual(['panorama-2']);
+  expect(current.furniture).toHaveLength(2);
+  expect(current.furniture[0]).not.toHaveProperty('roomId');
+  expect(current.furniture[0].source).toBe('manual');
+  expect(current.furniture[1]).toEqual(project.furniture[1]);
+  expect(store.getState().past).toHaveLength(1);
+  store.getState().undo();
+  expect(store.getState().currentProject).toEqual(project);
+  store.getState().redo();
+  expect(store.getState().currentProject).toEqual(current);
+  await store.getState().flush();
+});
+it('rejects invalid action references without changing state or history', async () => {
+  const { store, project } = await setup();
+  expect(() =>
+    store.getState().updateOpening('opening-1', { wallId: 'missing' }),
+  ).toThrow();
+  expect(() =>
+    store.getState().updateAnchor('anchor-1', { roomId: 'missing' }),
+  ).toThrow();
+  expect(store.getState().currentProject).toEqual(project);
+  expect(store.getState().past).toEqual([]);
+  expect(store.getState().isSaving).toBe(false);
 });

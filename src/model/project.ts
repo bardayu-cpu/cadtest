@@ -47,7 +47,10 @@ export function parseProjectJson(text: string): ImportResult {
     const field = issue.path.map(String).join('.') || '项目';
     return {
       success: false,
-      error: `无法导入：项目数据格式错误（${field}），请选择 version 为 2 的完整项目文件。`,
+      error:
+        issue.code === 'custom'
+          ? `无法导入：${issue.message}（${field}）。`
+          : `无法导入：项目数据格式错误（${field}），请选择 version 为 2 的完整项目文件。`,
     };
   }
   return { success: true, project: result.data };

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Project } from './types';
+import type { Project, ProjectIndexEntry } from './types';
 
 const idSchema = z.string().min(1);
 const positive = z.number().positive();
@@ -138,6 +138,46 @@ export const projectSchema = z
       .optional(),
   })
   .superRefine((project, context) => {
+    const walls = new Set(project.walls.map((item) => item.id));
+    const rooms = new Set(project.rooms.map((item) => item.id));
+    const anchors = new Set(project.anchors.map((item) => item.id));
+    const renders = new Set(project.floorPlanRenders.map((item) => item.id));
+    function invalid(path: (string | number)[], message: string) {
+      context.addIssue({ code: 'custom', path, message });
+    }
+    project.openings.forEach((opening, index) => {
+      if (!walls.has(opening.wallId))
+        invalid(['openings', index, 'wallId'], '门窗引用的墙体不存在');
+      if (opening.sillHeight >= opening.headHeight)
+        invalid(
+          ['openings', index, 'sillHeight'],
+          '门窗底部高度必须小于顶部高度',
+        );
+    });
+    project.anchors.forEach((anchor, index) => {
+      if (!rooms.has(anchor.roomId))
+        invalid(['anchors', index, 'roomId'], '锚点引用的房间不存在');
+      anchor.links.forEach((link, linkIndex) => {
+        const path = ['anchors', index, 'links', linkIndex, 'targetAnchorId'];
+        if (!anchors.has(link.targetAnchorId))
+          invalid(path, '热点引用的锚点不存在');
+        else if (link.targetAnchorId === anchor.id)
+          invalid(path, '热点不能指向自身锚点');
+      });
+    });
+    project.furniture.forEach((item, index) => {
+      if (item.roomId !== undefined && !rooms.has(item.roomId))
+        invalid(['furniture', index, 'roomId'], '家具引用的房间不存在');
+    });
+    project.panoramas.forEach((item, index) => {
+      if (!anchors.has(item.anchorId))
+        invalid(['panoramas', index, 'anchorId'], '全景引用的锚点不存在');
+    });
+    if (
+      project.approvedFloorPlanId !== undefined &&
+      !renders.has(project.approvedFloorPlanId)
+    )
+      invalid(['approvedFloorPlanId'], '已确认的彩平图不存在');
     for (const collection of [
       'walls',
       'openings',
@@ -158,8 +198,14 @@ export const projectSchema = z
     }
   }) satisfies z.ZodType<Project>;
 
-export const projectsSchema = z
-  .array(projectSchema)
+export const projectIndexEntrySchema = z.strictObject({
+  id: idSchema,
+  name: z.string().min(1),
+  updatedAt: z.iso.datetime({ offset: true }),
+}) satisfies z.ZodType<ProjectIndexEntry>;
+
+export const projectIndexSchema = z
+  .array(projectIndexEntrySchema)
   .refine(
     (projects) =>
       new Set(projects.map((project) => project.id)).size === projects.length,

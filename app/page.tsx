@@ -46,6 +46,14 @@ export default function HomePage() {
     }
   }
 
+  async function onExport(id: string) {
+    try {
+      downloadProject(await state.readProject(id));
+    } catch {
+      setMessage('无法导出：项目不存在或数据格式错误，请重试。');
+    }
+  }
+
   return (
     <main className="mx-auto flex min-h-screen max-w-4xl flex-col gap-8 px-6 py-16 sm:px-10">
       <header className="space-y-3">
@@ -129,7 +137,10 @@ export default function HomePage() {
                     {project.name}
                   </h2>
                   <p className="mt-2 text-sm text-stone-600">
-                    {project.walls.length} 面墙 · {project.rooms.length} 个房间
+                    更新时间：
+                    {project.updatedAt
+                      .replace('T', ' ')
+                      .replace(/\.\d+Z$/, ' UTC')}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-4">
@@ -142,7 +153,7 @@ export default function HomePage() {
                   </Link>
                   <button
                     type="button"
-                    onClick={() => downloadProject(project)}
+                    onClick={() => void onExport(project.id)}
                     className="text-emerald-800 underline"
                     aria-label={`导出 ${project.name}`}
                   >
