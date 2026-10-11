@@ -1,0 +1,896 @@
+{
+  "image": "floorplan-a.jpg",
+  "imageSize": {
+    "width": 1264,
+    "height": 921
+  },
+  "mmPerPixel": 15.52,
+  "calibration": [
+    {
+      "label": "top overall 15040",
+      "startPixel": {
+        "x": 123,
+        "y": 45
+      },
+      "endPixel": {
+        "x": 1091,
+        "y": 45
+      },
+      "lengthMm": 15040
+    },
+    {
+      "label": "top living 6390",
+      "startPixel": {
+        "x": 137,
+        "y": 64
+      },
+      "endPixel": {
+        "x": 549,
+        "y": 64
+      },
+      "lengthMm": 6390
+    },
+    {
+      "label": "top bedroom 2980",
+      "startPixel": {
+        "x": 562,
+        "y": 64
+      },
+      "endPixel": {
+        "x": 754,
+        "y": 64
+      },
+      "lengthMm": 2980
+    },
+    {
+      "label": "top master 3270",
+      "startPixel": {
+        "x": 763,
+        "y": 64
+      },
+      "endPixel": {
+        "x": 974,
+        "y": 64
+      },
+      "lengthMm": 3270
+    },
+    {
+      "label": "right overall 10430",
+      "startPixel": {
+        "x": 1167,
+        "y": 126
+      },
+      "endPixel": {
+        "x": 1167,
+        "y": 797
+      },
+      "lengthMm": 10430
+    }
+  ],
+  "walls": [
+    {
+      "id": "w01",
+      "start": {
+        "x": 2017.6,
+        "y": 2002.08
+      },
+      "end": {
+        "x": 2017.6,
+        "y": 11252.0
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w02",
+      "start": {
+        "x": 2017.6,
+        "y": 2002.08
+      },
+      "end": {
+        "x": 8629.12,
+        "y": 2002.08
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w03",
+      "start": {
+        "x": 8629.12,
+        "y": 2002.08
+      },
+      "end": {
+        "x": 8629.12,
+        "y": 6487.36
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w04",
+      "start": {
+        "x": 8629.12,
+        "y": 3352.32
+      },
+      "end": {
+        "x": 11717.6,
+        "y": 3352.32
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w05",
+      "start": {
+        "x": 11717.6,
+        "y": 2064.16
+      },
+      "end": {
+        "x": 11717.6,
+        "y": 3352.32
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w06",
+      "start": {
+        "x": 11717.6,
+        "y": 2064.16
+      },
+      "end": {
+        "x": 16823.68,
+        "y": 2064.16
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w07",
+      "start": {
+        "x": 16823.68,
+        "y": 2064.16
+      },
+      "end": {
+        "x": 16823.68,
+        "y": 9544.8
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w08",
+      "start": {
+        "x": 11826.24,
+        "y": 3352.32
+      },
+      "end": {
+        "x": 11826.24,
+        "y": 6487.36
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w09",
+      "start": {
+        "x": 8629.12,
+        "y": 6487.36
+      },
+      "end": {
+        "x": 11826.24,
+        "y": 6487.36
+      },
+      "thickness": 124.16,
+      "source": "manual"
+    },
+    {
+      "id": "w10",
+      "start": {
+        "x": 11826.24,
+        "y": 6487.36
+      },
+      "end": {
+        "x": 13455.84,
+        "y": 6487.36
+      },
+      "thickness": 124.16,
+      "source": "manual"
+    },
+    {
+      "id": "w11",
+      "start": {
+        "x": 13455.84,
+        "y": 6487.36
+      },
+      "end": {
+        "x": 13455.84,
+        "y": 6611.52
+      },
+      "thickness": 124.16,
+      "source": "manual"
+    },
+    {
+      "id": "w12",
+      "start": {
+        "x": 13455.84,
+        "y": 6611.52
+      },
+      "end": {
+        "x": 16823.68,
+        "y": 6611.52
+      },
+      "thickness": 124.16,
+      "source": "manual"
+    },
+    {
+      "id": "w13",
+      "start": {
+        "x": 15163.04,
+        "y": 2064.16
+      },
+      "end": {
+        "x": 15163.04,
+        "y": 4919.84
+      },
+      "thickness": 124.16,
+      "source": "manual"
+    },
+    {
+      "id": "w14",
+      "start": {
+        "x": 15163.04,
+        "y": 4919.84
+      },
+      "end": {
+        "x": 16823.68,
+        "y": 4919.84
+      },
+      "thickness": 124.16,
+      "source": "manual"
+    },
+    {
+      "id": "w15",
+      "start": {
+        "x": 2017.6,
+        "y": 11252.0
+      },
+      "end": {
+        "x": 3817.92,
+        "y": 11252.0
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w16",
+      "start": {
+        "x": 3817.92,
+        "y": 10444.96
+      },
+      "end": {
+        "x": 3817.92,
+        "y": 11252.0
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w17",
+      "start": {
+        "x": 3817.92,
+        "y": 10444.96
+      },
+      "end": {
+        "x": 7604.8,
+        "y": 10444.96
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w18",
+      "start": {
+        "x": 7604.8,
+        "y": 10444.96
+      },
+      "end": {
+        "x": 13424.8,
+        "y": 10444.96
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w19",
+      "start": {
+        "x": 3817.92,
+        "y": 11252.0
+      },
+      "end": {
+        "x": 3817.92,
+        "y": 12245.28
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w20",
+      "start": {
+        "x": 3817.92,
+        "y": 12245.28
+      },
+      "end": {
+        "x": 9343.04,
+        "y": 12245.28
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w21",
+      "start": {
+        "x": 9343.04,
+        "y": 10444.96
+      },
+      "end": {
+        "x": 9343.04,
+        "y": 12245.28
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w22",
+      "start": {
+        "x": 7604.8,
+        "y": 10444.96
+      },
+      "end": {
+        "x": 7604.8,
+        "y": 12245.28
+      },
+      "thickness": 124.16,
+      "source": "manual"
+    },
+    {
+      "id": "w23",
+      "start": {
+        "x": 13424.8,
+        "y": 9544.8
+      },
+      "end": {
+        "x": 13424.8,
+        "y": 10444.96
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w24",
+      "start": {
+        "x": 13424.8,
+        "y": 9544.8
+      },
+      "end": {
+        "x": 16823.68,
+        "y": 9544.8
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w25",
+      "start": {
+        "x": 8629.12,
+        "y": 7713.44
+      },
+      "end": {
+        "x": 13424.8,
+        "y": 7713.44
+      },
+      "thickness": 124.16,
+      "source": "manual"
+    },
+    {
+      "id": "w26",
+      "start": {
+        "x": 8629.12,
+        "y": 7713.44
+      },
+      "end": {
+        "x": 8629.12,
+        "y": 10444.96
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w27",
+      "start": {
+        "x": 10305.28,
+        "y": 7713.44
+      },
+      "end": {
+        "x": 10305.28,
+        "y": 10444.96
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w28",
+      "start": {
+        "x": 13424.8,
+        "y": 7713.44
+      },
+      "end": {
+        "x": 13424.8,
+        "y": 9544.8
+      },
+      "thickness": 217.28,
+      "source": "manual"
+    },
+    {
+      "id": "w29",
+      "start": {
+        "x": 13393.76,
+        "y": 6611.52
+      },
+      "end": {
+        "x": 13393.76,
+        "y": 7713.44
+      },
+      "thickness": 124.16,
+      "source": "manual"
+    }
+  ],
+  "openings": [
+    {
+      "id": "o01",
+      "wallId": "w02",
+      "offset": 3911.04,
+      "width": 5152.64,
+      "kind": "window",
+      "sillHeight": 900,
+      "headHeight": 2400,
+      "source": "manual"
+    },
+    {
+      "id": "o02",
+      "wallId": "w04",
+      "offset": 1381.28,
+      "width": 1769.28,
+      "kind": "window",
+      "sillHeight": 900,
+      "headHeight": 2400,
+      "source": "manual"
+    },
+    {
+      "id": "o03",
+      "wallId": "w06",
+      "offset": 1699.44,
+      "width": 2374.56,
+      "kind": "window",
+      "sillHeight": 900,
+      "headHeight": 2400,
+      "source": "manual"
+    },
+    {
+      "id": "o04",
+      "wallId": "w06",
+      "offset": 4299.04,
+      "width": 558.72,
+      "kind": "window",
+      "sillHeight": 900,
+      "headHeight": 2400,
+      "source": "manual"
+    },
+    {
+      "id": "o05",
+      "wallId": "w09",
+      "offset": 651.84,
+      "width": 869.12,
+      "kind": "door",
+      "sillHeight": 0,
+      "headHeight": 2100,
+      "source": "manual"
+    },
+    {
+      "id": "o06",
+      "wallId": "w10",
+      "offset": 550.96,
+      "width": 884.64,
+      "kind": "door",
+      "sillHeight": 0,
+      "headHeight": 2100,
+      "source": "manual"
+    },
+    {
+      "id": "o07",
+      "wallId": "w14",
+      "offset": 481.12,
+      "width": 869.12,
+      "kind": "door",
+      "sillHeight": 0,
+      "headHeight": 2100,
+      "source": "manual"
+    },
+    {
+      "id": "o08",
+      "wallId": "w29",
+      "offset": 558.72,
+      "width": 869.12,
+      "kind": "door",
+      "sillHeight": 0,
+      "headHeight": 2100,
+      "source": "manual"
+    },
+    {
+      "id": "o09",
+      "wallId": "w07",
+      "offset": 5781.2,
+      "width": 2374.56,
+      "kind": "floor_window",
+      "sillHeight": 0,
+      "headHeight": 2400,
+      "source": "manual"
+    },
+    {
+      "id": "o10",
+      "wallId": "w25",
+      "offset": 1086.4,
+      "width": 807.04,
+      "kind": "door",
+      "sillHeight": 0,
+      "headHeight": 2100,
+      "source": "manual"
+    },
+    {
+      "id": "o11",
+      "wallId": "w25",
+      "offset": 2234.88,
+      "width": 869.12,
+      "kind": "door",
+      "sillHeight": 0,
+      "headHeight": 2100,
+      "source": "manual"
+    },
+    {
+      "id": "o12",
+      "wallId": "w18",
+      "offset": 2126.24,
+      "width": 558.72,
+      "kind": "window",
+      "sillHeight": 900,
+      "headHeight": 2400,
+      "source": "manual"
+    },
+    {
+      "id": "o13",
+      "wallId": "w18",
+      "offset": 4516.32,
+      "width": 1769.28,
+      "kind": "window",
+      "sillHeight": 900,
+      "headHeight": 2400,
+      "source": "manual"
+    },
+    {
+      "id": "o14",
+      "wallId": "w17",
+      "offset": 2265.92,
+      "width": 2917.76,
+      "kind": "sliding_door",
+      "sillHeight": 0,
+      "headHeight": 2100,
+      "source": "manual"
+    },
+    {
+      "id": "o15",
+      "wallId": "w22",
+      "offset": 605.28,
+      "width": 869.12,
+      "kind": "door",
+      "sillHeight": 0,
+      "headHeight": 2100,
+      "source": "manual"
+    }
+  ],
+  "rooms": [
+    {
+      "id": "r01",
+      "type": "living",
+      "name": "客餐厅及通道",
+      "polygon": [
+        {
+          "x": 2017.6,
+          "y": 2002.08
+        },
+        {
+          "x": 8629.12,
+          "y": 2002.08
+        },
+        {
+          "x": 8629.12,
+          "y": 6487.36
+        },
+        {
+          "x": 13455.84,
+          "y": 6487.36
+        },
+        {
+          "x": 13455.84,
+          "y": 6611.52
+        },
+        {
+          "x": 13393.76,
+          "y": 6611.52
+        },
+        {
+          "x": 13393.76,
+          "y": 7713.44
+        },
+        {
+          "x": 8629.12,
+          "y": 7713.44
+        },
+        {
+          "x": 8629.12,
+          "y": 10444.96
+        },
+        {
+          "x": 3817.92,
+          "y": 10444.96
+        },
+        {
+          "x": 3817.92,
+          "y": 11252.0
+        },
+        {
+          "x": 2017.6,
+          "y": 11252.0
+        }
+      ],
+      "ceilingStyle": "flat",
+      "source": "manual"
+    },
+    {
+      "id": "r02",
+      "type": "bedroom",
+      "name": "次卧（上中）",
+      "polygon": [
+        {
+          "x": 8629.12,
+          "y": 3352.32
+        },
+        {
+          "x": 11826.24,
+          "y": 3352.32
+        },
+        {
+          "x": 11826.24,
+          "y": 6487.36
+        },
+        {
+          "x": 8629.12,
+          "y": 6487.36
+        }
+      ],
+      "ceilingStyle": "flat",
+      "source": "manual"
+    },
+    {
+      "id": "r03",
+      "type": "master_bedroom",
+      "name": "主卧（上右）",
+      "polygon": [
+        {
+          "x": 11717.6,
+          "y": 2064.16
+        },
+        {
+          "x": 15163.04,
+          "y": 2064.16
+        },
+        {
+          "x": 15163.04,
+          "y": 4919.84
+        },
+        {
+          "x": 16823.68,
+          "y": 4919.84
+        },
+        {
+          "x": 16823.68,
+          "y": 6611.52
+        },
+        {
+          "x": 13455.84,
+          "y": 6611.52
+        },
+        {
+          "x": 13455.84,
+          "y": 6487.36
+        },
+        {
+          "x": 11826.24,
+          "y": 6487.36
+        },
+        {
+          "x": 11826.24,
+          "y": 3352.32
+        },
+        {
+          "x": 11717.6,
+          "y": 3352.32
+        }
+      ],
+      "ceilingStyle": "flat",
+      "source": "manual"
+    },
+    {
+      "id": "r04",
+      "type": "bathroom",
+      "name": "主卫",
+      "polygon": [
+        {
+          "x": 15163.04,
+          "y": 2064.16
+        },
+        {
+          "x": 16823.68,
+          "y": 2064.16
+        },
+        {
+          "x": 16823.68,
+          "y": 4919.84
+        },
+        {
+          "x": 15163.04,
+          "y": 4919.84
+        }
+      ],
+      "ceilingStyle": "flat",
+      "source": "manual"
+    },
+    {
+      "id": "r05",
+      "type": "bedroom",
+      "name": "次卧（右）",
+      "polygon": [
+        {
+          "x": 13455.84,
+          "y": 6611.52
+        },
+        {
+          "x": 16823.68,
+          "y": 6611.52
+        },
+        {
+          "x": 16823.68,
+          "y": 9544.8
+        },
+        {
+          "x": 13424.8,
+          "y": 9544.8
+        },
+        {
+          "x": 13424.8,
+          "y": 7713.44
+        },
+        {
+          "x": 13393.76,
+          "y": 7713.44
+        },
+        {
+          "x": 13393.76,
+          "y": 6611.52
+        }
+      ],
+      "ceilingStyle": "flat",
+      "source": "manual"
+    },
+    {
+      "id": "r06",
+      "type": "other",
+      "name": "未标用途房间（下中）",
+      "polygon": [
+        {
+          "x": 10305.28,
+          "y": 7713.44
+        },
+        {
+          "x": 13424.8,
+          "y": 7713.44
+        },
+        {
+          "x": 13424.8,
+          "y": 10444.96
+        },
+        {
+          "x": 10305.28,
+          "y": 10444.96
+        }
+      ],
+      "ceilingStyle": "flat",
+      "source": "manual"
+    },
+    {
+      "id": "r07",
+      "type": "bathroom",
+      "name": "公卫",
+      "polygon": [
+        {
+          "x": 8629.12,
+          "y": 7713.44
+        },
+        {
+          "x": 10305.28,
+          "y": 7713.44
+        },
+        {
+          "x": 10305.28,
+          "y": 10444.96
+        },
+        {
+          "x": 8629.12,
+          "y": 10444.96
+        }
+      ],
+      "ceilingStyle": "flat",
+      "source": "manual"
+    },
+    {
+      "id": "r08",
+      "type": "kitchen",
+      "name": "厨房",
+      "polygon": [
+        {
+          "x": 3817.92,
+          "y": 10444.96
+        },
+        {
+          "x": 7604.8,
+          "y": 10444.96
+        },
+        {
+          "x": 7604.8,
+          "y": 12245.28
+        },
+        {
+          "x": 3817.92,
+          "y": 12245.28
+        }
+      ],
+      "ceilingStyle": "flat",
+      "source": "manual"
+    },
+    {
+      "id": "r09",
+      "type": "balcony",
+      "name": "生活阳台（洗衣区）",
+      "polygon": [
+        {
+          "x": 7604.8,
+          "y": 10444.96
+        },
+        {
+          "x": 9343.04,
+          "y": 10444.96
+        },
+        {
+          "x": 9343.04,
+          "y": 12245.28
+        },
+        {
+          "x": 7604.8,
+          "y": 12245.28
+        }
+      ],
+      "ceilingStyle": "flat",
+      "source": "manual"
+    }
+  ]
+}
