@@ -1,54 +1,84 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { evaluate, OPENING_KINDS } from '../src/recognize/evaluate';
+import { createRequire } from 'node:module';
+import { cpus, platform, arch } from 'node:os';
+import sharp from 'sharp';
+import { evaluate } from '../src/recognize/evaluate';
 import { expectedFloorplanSchema } from '../src/recognize/schema';
-import type { RecognitionData } from '../src/recognize/types';
+import { recognizeFloorPlan } from '../src/recognize/pipeline';
 
 const fixtures = resolve('fixtures');
-const files = (await readdir(fixtures))
-  .filter((name) => name.endsWith('.expected.json'))
+const names = await readdir(fixtures);
+const files = names
+  .filter((name) => /^floorplan-.*\.(jpg|jpeg|png)$/i.test(name))
   .sort();
-if (files.length === 0) throw new Error('No fixtures/*.expected.json found.');
-const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
+if (!files.length) throw new Error('No floorplan images found.');
+const require = createRequire(import.meta.url);
+const langPath = resolve(
+  require.resolve('@tesseract.js-data/eng'),
+  '../4.0.0_best_int',
+);
+await mkdir('tmp', { recursive: true });
+await writeFile('tmp/.gitignore', '*\n');
 const rows = [];
 for (const file of files) {
-  const expected = expectedFloorplanSchema.parse(
-    JSON.parse(await readFile(resolve(fixtures, file), 'utf8')),
+  const started = performance.now();
+  const { data, info } = await sharp(await readFile(resolve(fixtures, file)))
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const predicted = await recognizeFloorPlan(
+    { width: info.width, height: info.height, data },
+    { ocr: { langPath } },
   );
-  // Read the image as the future pipeline input; #12 intentionally uses no algorithm.
-  await readFile(resolve(fixtures, expected.image));
-  const predicted: RecognitionData = {
-    mmPerPixel: null,
-    walls: [],
-    openings: [],
-    rooms: [],
-  };
-  const result = evaluate(predicted, expected);
+  const durationMs = performance.now() - started;
+  const stem = file.replace(/\.(jpg|jpeg|png)$/i, '');
+  const result = { ...predicted, openings: [], rooms: [] };
+  await writeFile(
+    `tmp/${stem}.recognized.json`,
+    JSON.stringify(result, null, 2) + '\n',
+  );
+  const expectedName = `${stem}.expected.json`;
+  const expected = names.includes(expectedName)
+    ? expectedFloorplanSchema.parse(
+        JSON.parse(await readFile(resolve(fixtures, expectedName), 'utf8')),
+      )
+    : null;
+  const score = expected ? evaluate(result, expected) : null;
   rows.push({
-    fixture: file,
-    mode: 'empty placeholder',
+    image: file,
+    mmPerPixel: predicted.mmPerPixel?.toFixed(5) ?? 'undetected',
     scaleError:
-      result.scaleRelativeError === null
-        ? 'N/A (undetected)'
-        : percent(result.scaleRelativeError),
-    walls: `${result.walls.matched}/${result.walls.expected}`,
-    wallRecall: percent(result.walls.recall),
-    wallPrecision: percent(result.walls.precision),
-    rooms: `${result.rooms.predicted}/${result.rooms.expected}`,
-    roomIoUMatches: result.rooms.matched,
-    roomTypeMatches: result.rooms.typeMatched,
+      score?.scaleRelativeError === null || !score
+        ? 'N/A'
+        : `${(score.scaleRelativeError * 100).toFixed(3)}%`,
+    walls: predicted.walls.length,
+    matched: score
+      ? `${score.walls.matched}/${score.walls.expected}`
+      : 'N/A (no truth)',
+    recall: score ? `${(score.walls.recall * 100).toFixed(1)}%` : 'N/A',
+    precision: score ? `${(score.walls.precision * 100).toFixed(1)}%` : 'N/A',
+    durationMs: Math.round(durationMs),
+    under5s: durationMs < 5000,
   });
-  console.log(`\n${file} — opening scores`);
-  console.table(
-    OPENING_KINDS.map((kind) => ({
-      kind,
-      ...result.openings[kind],
-      recall: percent(result.openings[kind].recall),
-      precision: percent(result.openings[kind].precision),
-    })),
+  console.log(
+    `${file}: ${predicted.report.warnings.join(' ')} (${predicted.diagnostics.dimensionMeasurements.length} scale measurements)`,
   );
 }
-console.log(
-  '\nRecognition benchmark (empty placeholder; scale unavailable, ratios for absent types are vacuous):',
-);
+const machine = `${cpus()[0]?.model ?? 'unknown CPU'} / ${platform()} ${arch()} / Node ${process.version}`;
+console.log(machine);
 console.table(rows);
+await writeFile(
+  'tmp/bench-recognize.json',
+  JSON.stringify({ machine, rows }, null, 2) + '\n',
+);
+await writeFile(
+  'tmp/bench-recognize.md',
+  `Machine: ${machine}\n\n| ${Object.keys(rows[0]).join(' | ')} |\n| ${Object.keys(
+    rows[0],
+  )
+    .map(() => '---')
+    .join(
+      ' | ',
+    )} |\n${rows.map((row) => `| ${Object.values(row).join(' | ')} |`).join('\n')}\n`,
+);

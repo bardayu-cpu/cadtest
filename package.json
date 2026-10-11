@@ -10,14 +10,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . --max-warnings=0 && prettier --check .",
+    "lint": "eslint . --max-warnings=0 --ignore-pattern 'tmp/**' && prettier --check . --ignore-path .prettierignore --ignore-path scripts/recognize.prettierignore",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run && vitest run --config tests/recognize/vitest.config.ts",
     "test:watch": "vitest",
     "e2e": "playwright test",
     "format": "prettier --write .",
     "bench:recognize": "node --import tsx scripts/bench-recognize.ts",
-    "overlay": "node --import tsx scripts/overlay.ts"
+    "overlay": "node --import tsx scripts/overlay.ts",
+    "smoke:recognize:browser": "node --import tsx scripts/browser-recognize-smoke.ts"
   },
   "dependencies": {
     "idb-keyval": "^6.3.0",
@@ -27,15 +28,18 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-konva": "^19.3.0",
+    "tesseract.js": "^7.0.0",
     "zod": "^4.6.5",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
     "@tailwindcss/postcss": "^4.1.0",
+    "@tesseract.js-data/eng": "^1.0.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "esbuild": "^0.28.2",
     "eslint": "^9.0.0",
     "eslint-config-next": "16.4.0",
     "eslint-config-prettier": "^10.0.0",
