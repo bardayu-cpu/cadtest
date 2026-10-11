@@ -32,7 +32,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       if (!action || state.hydration !== 'ready' || !state.currentProject)
         return;
       if (
-        action === 'undo' ? state.past.length === 0 : state.future.length === 0
+        action === 'undo'
+          ? state.past.length === 0 && !state.transactionActive
+          : state.future.length === 0 && !state.transactionActive
       )
         return;
       event.preventDefault();
