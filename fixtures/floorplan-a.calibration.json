@@ -1,0 +1,8 @@
+{
+  "image": "floorplan-a.jpg",
+  "width": 1264,
+  "height": 921,
+  "distanceMm": 15040,
+  "top": [{ "x": 123, "y": 45 }, { "x": 1091, "y": 45 }],
+  "bottom": [{ "x": 123, "y": 874 }, { "x": 1091, "y": 874 }]
+}

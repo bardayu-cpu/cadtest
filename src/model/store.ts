@@ -39,6 +39,7 @@ export interface ProjectState {
   openProject(id: string): Promise<void>;
   closeProject(): void;
   updateProject(patch: Partial<Omit<Project, 'id' | 'version'>>): void;
+  updateBackground(patch: Partial<Project['background']>): void;
   importProject(text: string, overwrite?: boolean): ImportResult;
   addWall(wall: Wall): void;
   updateWall(id: string, patch: Patch<Wall>): void;
@@ -293,6 +294,11 @@ export function createProjectStore(
         }
         if (!hasChanges(project, metadata)) return;
         commit({ ...project, ...metadata, id: project.id, version: 2 });
+      },
+      updateBackground: (patch) => {
+        const project = activeProject();
+        if (!hasChanges(project.background, patch)) return;
+        commit({ ...project, background: { ...project.background, ...patch } });
       },
       importProject: (text, overwrite = false) => {
         if (get().hydration !== 'ready')
