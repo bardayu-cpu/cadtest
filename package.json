@@ -18,7 +18,8 @@
     "format": "prettier --write .",
     "bench:recognize": "node --import tsx scripts/bench-recognize.ts",
     "overlay": "node --import tsx scripts/overlay.ts",
-    "smoke:recognize:browser": "node --import tsx scripts/browser-recognize-smoke.ts"
+    "smoke:recognize:browser": "node --import tsx scripts/browser-recognize-smoke.ts",
+    "record:vision": "node --import tsx scripts/record-vision.ts"
   },
   "dependencies": {
     "idb-keyval": "^6.3.0",
