@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import './globals.css';
+import { ProjectProvider } from '@/model/provider';
 
 export const metadata: Metadata = {
   title: 'cadtest · 户型图到全景效果图',
@@ -10,7 +11,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="zh-CN">
-      <body>{children}</body>
+      <body>
+        <ProjectProvider>{children}</ProjectProvider>
+      </body>
     </html>
   );
 }
