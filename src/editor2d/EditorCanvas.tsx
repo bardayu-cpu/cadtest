@@ -13,6 +13,8 @@ import { useProjectStore } from '@/model/provider';
 import { calibrationScale, pointDistance } from '@/geometry/canvas';
 import { pxToMm } from '@/geometry/units';
 import { Canvas2D } from './Canvas2D';
+import { useWallTool, type WallTool } from './tools/useWallTool';
+import { WallControls } from './tools/WallControls';
 import { loadImage, sanitizeFloorPlan } from './image';
 import {
   calibrationIdentity,
@@ -27,6 +29,8 @@ const buttonClass =
 
 export function EditorCanvas({ project }: { project: Project }) {
   const background = project.background;
+  const wallEditor = useWallTool(project);
+  const finishWall = wallEditor.finish;
   const updateBackground = useProjectStore((state) => state.updateBackground);
   const fileInput = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
@@ -131,6 +135,7 @@ export function EditorCanvas({ project }: { project: Project }) {
             (item) => !item.startsWith(`${imageKey}:`),
           ),
         }));
+        finishWall();
         setVisible(true);
         setFitVersion((current) => current + 1);
         setSelection(null);
@@ -148,7 +153,7 @@ export function EditorCanvas({ project }: { project: Project }) {
         if (request === uploadRequest.current) setUploading(false);
       }
     },
-    [background.imageDataUrl, updateBackground, changeSettings],
+    [background.imageDataUrl, updateBackground, changeSettings, finishWall],
   );
   useEffect(() => {
     function paste(event: ClipboardEvent) {
@@ -177,6 +182,7 @@ export function EditorCanvas({ project }: { project: Project }) {
     setError(null);
   }
   function beginCalibration() {
+    wallEditor.chooseTool('select');
     setSelection({ source: background.imageDataUrl, points: [] });
     setError(null);
     setMessage(null);
@@ -261,6 +267,14 @@ export function EditorCanvas({ project }: { project: Project }) {
         }}
       >
         <Canvas2D
+          wallEditor={{
+            ...wallEditor,
+            chooseTool(next: WallTool['tool']) {
+              cancelCalibration();
+              wallEditor.chooseTool(next);
+            },
+          }}
+          walls={project.walls}
           background={background}
           image={image}
           visible={visible}
@@ -320,6 +334,9 @@ export function EditorCanvas({ project }: { project: Project }) {
               收起
             </button>
           </div>
+          {(wallEditor.tool === 'wall' || wallEditor.selected) && (
+            <WallControls editor={wallEditor} />
+          )}
           <button
             type="button"
             className={`${buttonClass} w-full`}
@@ -505,7 +522,7 @@ export function EditorCanvas({ project }: { project: Project }) {
             </section>
           ) : (
             <p className="rounded-lg bg-stone-50 p-3 text-xs leading-relaxed text-stone-500">
-              先上传户型图，再按引导校准尺寸。暂未提供自动识别和绘制工具。
+              先上传户型图，再按引导校准尺寸。也可切换到墙工具，从零手动描墙。
             </p>
           )}
           {(uploading || loading) && (
@@ -532,7 +549,7 @@ export function EditorCanvas({ project }: { project: Project }) {
               · {project.anchors.length} 个锚点
             </p>
             <p className="leading-relaxed">
-              墙体、门窗、房间和家具的绘制工具将在后续版本提供。
+              门窗、房间和家具的绘制工具将在后续版本提供。
             </p>
           </section>
         </aside>

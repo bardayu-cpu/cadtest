@@ -25,6 +25,10 @@ export interface ProjectState {
   projectLoad: 'idle' | 'loading' | 'ready' | 'error';
   projectError: string | null;
   activeProjectId: string | null;
+  transactionActive: boolean;
+  beginTransaction(): void;
+  endTransaction(): void;
+  cancelTransaction(): void;
   past: Project[];
   future: Project[];
   hydration: 'idle' | 'loading' | 'ready' | 'error';
@@ -68,6 +72,8 @@ export function createProjectStore(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let writing: Promise<boolean> | undefined;
   let openRequest = 0;
+  let transaction:
+    { before: Project; future: Project[]; depth: number } | undefined;
 
   const store = createStore<ProjectState>()((set, get) => {
     function requireReady() {
@@ -81,13 +87,40 @@ export function createProjectStore(
       if (!project) throw new Error('请先打开一个项目。');
       return project;
     }
+    function finishTransaction(cancel = false) {
+      if (!transaction) return;
+      if (!cancel && --transaction.depth > 0) return;
+      const { before, future } = transaction;
+      transaction = undefined;
+      const current = get().currentProject;
+      if (!current || current.id !== before.id) {
+        set({ transactionActive: false });
+        return;
+      }
+      if (cancel || sameValue(current, before)) {
+        set({ currentProject: before, future, transactionActive: false });
+        if (current !== before) queueProject(before);
+      } else {
+        set((state) => ({
+          past: [...state.past, before].slice(-HISTORY_LIMIT),
+          future: [],
+          transactionActive: false,
+        }));
+      }
+    }
+    function settleTransaction() {
+      if (transaction) transaction.depth = 1;
+      finishTransaction();
+    }
     function commit(next: Project) {
       const previous = activeProject();
       const parsed = projectSchema.parse(next);
 
       set((state) => ({
         currentProject: parsed,
-        past: [...state.past, previous].slice(-HISTORY_LIMIT),
+        past: transaction
+          ? state.past
+          : [...state.past, previous].slice(-HISTORY_LIMIT),
         future: [],
       }));
       queueProject(parsed);
@@ -149,6 +182,15 @@ export function createProjectStore(
       commit(next);
     }
     return {
+      transactionActive: false,
+      beginTransaction: () => {
+        const before = activeProject();
+        if (transaction) transaction.depth += 1;
+        else transaction = { before, future: get().future, depth: 1 };
+        set({ transactionActive: true });
+      },
+      endTransaction: () => finishTransaction(),
+      cancelTransaction: () => finishTransaction(true),
       projects: [],
       currentProject: null,
       projectLoad: 'idle',
@@ -189,6 +231,7 @@ export function createProjectStore(
       },
       createProject: (name) => {
         requireReady();
+        settleTransaction();
         const project = createProject(name);
         openRequest += 1;
         set({
@@ -205,7 +248,10 @@ export function createProjectStore(
       deleteProject: (id) => {
         requireReady();
         if (!get().projects.some((item) => item.id === id)) return;
-        if (get().activeProjectId === id) openRequest += 1;
+        if (get().activeProjectId === id) {
+          settleTransaction();
+          openRequest += 1;
+        }
         set((state) => ({
           projects: state.projects.filter((item) => item.id !== id),
           ...(state.activeProjectId === id
@@ -244,6 +290,7 @@ export function createProjectStore(
       openProject: async (id) => {
         requireReady();
         if (get().currentProject?.id === id) return;
+        settleTransaction();
         const request = ++openRequest;
         set({
           activeProjectId: id,
@@ -271,6 +318,7 @@ export function createProjectStore(
         }
       },
       closeProject: () => {
+        settleTransaction();
         openRequest += 1;
         set({
           activeProjectId: null,
@@ -312,6 +360,7 @@ export function createProjectStore(
             success: false,
             error: '相同编号的项目已存在，确认覆盖后才能导入。',
           };
+        settleTransaction();
         openRequest += 1;
         set({
           currentProject: project,
@@ -340,6 +389,7 @@ export function createProjectStore(
       updateAnchor: (id, patch) => update('anchors', id, patch),
       removeAnchor: (id) => remove('anchors', id),
       undo: () => {
+        settleTransaction();
         const project = activeProject();
         const state = get();
         const previous = state.past.at(-1);
@@ -352,6 +402,7 @@ export function createProjectStore(
         queueProject(previous);
       },
       redo: () => {
+        settleTransaction();
         const project = activeProject();
         const state = get();
         const next = state.future[0];
@@ -441,5 +492,26 @@ function hasChanges(original: object, patch: object) {
   // as an edit; never stringify the project or any embedded image data.
   return Object.entries(patch).some(
     ([key, value]) => !Object.is(Reflect.get(original, key), value),
+  );
+}
+
+// Compare immutable snapshots without serializing or duplicating embedded images.
+function sameValue(first: unknown, second: unknown): boolean {
+  if (Object.is(first, second)) return true;
+  if (
+    !first ||
+    !second ||
+    typeof first !== 'object' ||
+    typeof second !== 'object'
+  )
+    return false;
+  const keys = Object.keys(first);
+  return (
+    keys.length === Object.keys(second).length &&
+    keys.every(
+      (key) =>
+        Object.hasOwn(second, key) &&
+        sameValue(Reflect.get(first, key), Reflect.get(second, key)),
+    )
   );
 }
