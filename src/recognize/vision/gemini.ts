@@ -170,7 +170,12 @@ export async function recognizeWithGemini(
         let rawResponse: unknown;
         try {
           rawResponse = await response.json();
-        } catch {
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            ['TimeoutError', 'AbortError'].includes(error.name)
+          )
+            throw error;
           throw new GeminiError(
             'INVALID_RESPONSE',
             attempt,

@@ -113,6 +113,24 @@ describe('Node-only Gemini REST adapter', () => {
     expect(result.calls).toBe(3);
     expect(sleep.mock.calls).toEqual([[1000], [2000]]);
   });
+  it('retries a timeout while reading the response body, not just its headers', async () => {
+    const timed = response();
+    vi.spyOn(timed, 'json').mockRejectedValue(
+      new DOMException('mock-credential', 'AbortError'),
+    );
+    const request = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(timed)
+      .mockResolvedValueOnce(response());
+    const sleep = vi.fn(async () => {});
+    const result = await recognizeWithGemini(image, size, {
+      cacheDir,
+      fetch: request,
+      sleep,
+    });
+    expect(result.calls).toBe(2);
+    expect(sleep.mock.calls).toEqual([[1000]]);
+  });
   it('limits retries to three and hides upstream errors/credentials', async () => {
     const request = vi
       .fn<typeof fetch>()
