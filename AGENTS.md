@@ -23,5 +23,5 @@
 ## Hard rules
 - Never commit API keys or `.env*` files (except `.env.example`).
 - Do not add analytics/telemetry SDKs.
-- Do not call any external AI service until Phase 3; use the `mock` provider.
+- Do not call any external AI service unless the issue explicitly says so; otherwise use the `mock` provider.
 - Test fixtures live in `fixtures/` (public sample floor plans, OK to commit).
