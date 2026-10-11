@@ -2,14 +2,14 @@
 
 import { useProjectStore } from '@/model/provider';
 
-export function StorageStatus() {
+export function StorageStatus({ compact = false }: { compact?: boolean } = {}) {
   const { hydration, isSaving, storageError, hydrate, retrySave } =
     useProjectStore((state) => state);
   if (storageError)
     return (
       <div
         role="alert"
-        className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800"
+        className={`rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 ${compact ? 'absolute right-0 top-full z-50 max-w-sm shadow-lg' : ''}`}
       >
         <p>{storageError}</p>
         <button
@@ -22,7 +22,12 @@ export function StorageStatus() {
       </div>
     );
   return (
-    <p role="status" className="text-sm text-stone-600">
+    <p
+      role="status"
+      className={
+        compact ? 'text-[11px] text-stone-500' : 'text-sm text-stone-600'
+      }
+    >
       {hydration !== 'ready'
         ? '正在读取本地项目…'
         : isSaving

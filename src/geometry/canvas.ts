@@ -69,14 +69,16 @@ export function fitImage(
   image: Size,
   canvas: Size,
   background: Project['background'],
+  padding = { top: 16, bottom: 16 },
 ): Viewport {
+  const availableHeight = canvas.height - padding.top - padding.bottom;
   const scale = Math.min(
     1,
     Math.max(
       MIN_ZOOM,
       Math.min(
         (canvas.width - 32) / image.width,
-        (canvas.height - 32) / image.height,
+        availableHeight / image.height,
       ),
     ),
   );
@@ -86,7 +88,42 @@ export function fitImage(
       (canvas.width - image.width * scale) / 2 -
       mmToPx(background.offset.x, background.mmPerPixel) * scale,
     y:
-      (canvas.height - image.height * scale) / 2 -
+      padding.top +
+      (availableHeight - image.height * scale) / 2 -
       mmToPx(background.offset.y, background.mmPerPixel) * scale,
+  };
+}
+
+export interface WheelInput {
+  deltaX: number;
+  deltaY: number;
+  deltaMode: number;
+  ctrlKey: boolean;
+  metaKey: boolean;
+}
+
+export function wheelViewport(
+  view: Viewport,
+  pointer: Vec2,
+  event: WheelInput,
+  canvas: Size,
+  locked: boolean,
+): Viewport {
+  if (locked) return view;
+  const xUnit =
+    event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.width : 1;
+  const yUnit =
+    event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.height : 1;
+  if (event.ctrlKey || event.metaKey) {
+    return zoomAt(
+      view,
+      pointer,
+      Math.exp(Math.max(-10, Math.min(10, -event.deltaY * yUnit * 0.005))),
+    );
+  }
+  return {
+    ...view,
+    x: view.x - event.deltaX * xUnit,
+    y: view.y - event.deltaY * yUnit,
   };
 }

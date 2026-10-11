@@ -22,6 +22,7 @@ test('creates, opens, renames, undoes, redoes, refreshes and deletes a local pro
   await expect(
     page.getByRole('heading', { name: '我的家', exact: true }),
   ).toBeVisible();
+  await page.getByRole('button', { name: '项目信息' }).click();
   await page.getByRole('textbox', { name: '项目名称' }).fill('新名字');
   await page.getByRole('button', { name: '保存名称' }).click();
   await expect(
@@ -86,6 +87,12 @@ test('imports every model field, survives refresh and downloads the identical JS
   for await (const chunk of stream) chunks.push(Buffer.from(chunk));
   expect(JSON.parse(Buffer.concat(chunks).toString('utf8'))).toEqual(project);
   await page.getByRole('link', { name: `打开 ${project.name}` }).click();
+  await expect(page).toHaveURL(/\/project\//, { timeout: 15000 });
+  await expect(
+    page.getByRole('region', { name: '编辑画布', exact: true }),
+  ).toBeVisible({ timeout: 15000 });
+  const sidebar = page.getByRole('button', { name: '展开侧栏', exact: true });
+  if (await sidebar.isVisible()) await sidebar.click();
   await expect(
     page.getByText('1 面墙 · 1 个门窗 · 1 个房间 · 1 件家具 · 2 个锚点'),
   ).toBeVisible();
@@ -130,6 +137,8 @@ for (const event of ['visibilitychange', 'pagehide'] as const) {
     await waitForSave(page);
     await page.getByRole('button', { name: '新建项目', exact: true }).click();
     await expect(page).toHaveURL(/\/project\//);
+    await expect(page.getByRole('button', { name: '项目信息' })).toBeEnabled();
+    await page.getByRole('button', { name: '项目信息' }).click();
     await expect(page.getByRole('button', { name: '保存名称' })).toBeEnabled();
     await expect(page.getByRole('textbox', { name: '项目名称' })).toBeVisible();
     const name = `即时保存 ${event}`;

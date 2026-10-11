@@ -61,6 +61,17 @@ describe('canvas coordinates and calibration', () => {
     expect(view.scale * 1264).toBeLessThanOrEqual(768);
     expect(view.scale * 921).toBeLessThanOrEqual(488);
   });
+  it('fits below the toolbar so dimension endpoints remain clickable', () => {
+    const view = fitImage(
+      { width: 1264, height: 921 },
+      { width: 1000, height: 724 },
+      { ...completeProject().background, offset: { x: 0, y: 0 } },
+      { top: 64, bottom: 16 },
+    );
+    expect(canvasToScreen(fixture.top[0], view).y).toBeGreaterThan(64);
+    expect(canvasToScreen(fixture.top[1], view).y).toBeGreaterThan(64);
+    expect(canvasToScreen(fixture.bottom[1], view).y).toBeLessThan(708);
+  });
   it('calibrates the fixture top 15040 line and measures the bottom line within 1%', () => {
     const scale = calibrationScale(
       fixture.top[0],

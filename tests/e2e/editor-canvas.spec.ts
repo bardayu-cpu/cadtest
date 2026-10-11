@@ -4,6 +4,8 @@ import { completeProject } from '../helpers/project';
 import type { Project, Vec2 } from '../../src/model/types';
 import fixture from '../../fixtures/floorplan-a.calibration.json' with { type: 'json' };
 
+test.setTimeout(60000);
+
 // Avoid concurrent cold compilation competing with navigation assertions.
 test.beforeAll(async ({ request }) => {
   expect((await request.get('/project/example')).ok()).toBe(true);
@@ -22,7 +24,7 @@ async function openEditor(page: Page, project?: Project) {
   } else
     await page.getByRole('button', { name: '新建项目', exact: true }).click();
   await expect(page).toHaveURL(/\/project\//, { timeout: 15000 });
-  await expect(page.getByRole('button', { name: '保存名称' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '项目信息' })).toBeEnabled();
   await expect(
     page.getByRole('region', { name: '编辑画布', exact: true }),
   ).toBeVisible({ timeout: 15000 });
@@ -60,8 +62,13 @@ async function pickImagePoint(page: Page, point: Vec2) {
     bounds.y + view.y + point.y * view.scale,
   );
 }
+async function ensureSidebar(page: Page) {
+  const toggle = page.getByRole('button', { name: '展开侧栏', exact: true });
+  if (await toggle.isVisible()) await toggle.click();
+}
 async function selectLine(page: Page, line: Vec2[]) {
-  await page.getByRole('button', { name: '手动校准' }).click();
+  await ensureSidebar(page);
+  await page.getByRole('button', { name: /^(手动校准|重新校准)$/ }).click();
   await pickImagePoint(page, line[0]);
   await pickImagePoint(page, line[1]);
   await expect(page.getByLabel('真实距离（mm）')).toBeVisible();
@@ -193,13 +200,18 @@ test('zooms around the pointer, pans with Space, displays mm coordinates and lea
       y: Number(element.getAttribute('data-viewport-y')),
       scale: Number(element.getAttribute('data-viewport-scale')),
     }));
+  if ((page.viewportSize()?.width ?? 1280) < 768)
+    await page.getByRole('button', { name: '收起侧栏', exact: true }).click();
+  await page.getByRole('button', { name: '解锁视图' }).click();
   const before = await view();
   const x = Math.round(box.x + box.width / 2),
     y = Math.round(box.y + box.height / 2);
   await page.mouse.move(x, y);
   await expect(page.getByLabel('鼠标位置')).toContainText('mm');
   const position = await page.getByLabel('鼠标位置').textContent();
-  await page.mouse.wheel(0, -200);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -20);
+  await page.keyboard.up('Control');
   await expect
     .poll(async () => (await view()).scale)
     .toBeGreaterThan(before.scale);
@@ -262,6 +274,7 @@ test('persists opacity, toggles the background and keeps other steps as placehol
   await expect(page.getByRole('status')).toHaveText('已保存到本机');
   await page.reload();
   await uploadLoaded(page);
+  await ensureSidebar(page);
   await expect(page.getByRole('slider', { name: '底图透明度' })).toHaveValue(
     '0.35',
   );
@@ -323,6 +336,7 @@ test('does not reuse calibration points from an image that has been undone', asy
   await openEditor(page);
   await uploadFixture(page);
   const original = await exportProject(page);
+  page.once('dialog', (dialog) => dialog.accept());
   await page.getByLabel('上传户型图').setInputFiles('fixtures/floorplan-b.jpg');
   const region = page.getByRole('region', { name: '户型图画布', exact: true });
   await expect(region).toHaveAttribute('data-image-width', '1071');
@@ -335,4 +349,279 @@ test('does not reuse calibration points from an image that has been undone', asy
   await expect(region).toHaveAttribute('data-image-width', '1264');
   await expect(page.getByLabel('真实距离（mm）')).toBeHidden();
   expect(await exportProject(page)).toEqual(original);
+});
+
+async function dropFile(
+  page: Page,
+  name: string,
+  mimeType: string,
+  buffer: Buffer,
+) {
+  const data = await page.evaluateHandle(
+    ({ name, mimeType, base64 }) => {
+      const transfer = new DataTransfer();
+      transfer.items.add(
+        new File(
+          [
+            Uint8Array.from(atob(base64), (character) =>
+              character.charCodeAt(0),
+            ),
+          ],
+          name,
+          { type: mimeType },
+        ),
+      );
+      return transfer;
+    },
+    { name, mimeType, base64: buffer.toString('base64') },
+  );
+  const canvas = page.getByRole('region', { name: '户型图画布', exact: true });
+  await canvas.dispatchEvent('dragenter', { dataTransfer: data });
+  await expect(page.getByText('松开即可上传', { exact: true })).toBeVisible();
+  await canvas.dispatchEvent('dragover', { dataTransfer: data });
+  await canvas.dispatchEvent('drop', { dataTransfer: data });
+  await data.dispose();
+}
+async function pasteFile(
+  page: Page,
+  target: import('@playwright/test').Locator,
+  name: string,
+  buffer: Buffer,
+) {
+  const data = await page.evaluateHandle(
+    ({ name, base64 }) => {
+      const transfer = new DataTransfer();
+      transfer.items.add(
+        new File(
+          [
+            Uint8Array.from(atob(base64), (character) =>
+              character.charCodeAt(0),
+            ),
+          ],
+          name,
+          { type: 'image/jpeg' },
+        ),
+      );
+      return transfer;
+    },
+    { name, base64: buffer.toString('base64') },
+  );
+  await target.evaluate(
+    (element, transfer) =>
+      element.dispatchEvent(
+        new ClipboardEvent('paste', {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: transfer,
+        }),
+      ),
+    data,
+  );
+  await data.dispose();
+}
+async function canvasView(page: Page) {
+  return page
+    .getByRole('region', { name: '户型图画布', exact: true })
+    .evaluate((element) => ({
+      x: Number(element.getAttribute('data-viewport-x')),
+      y: Number(element.getAttribute('data-viewport-y')),
+      scale: Number(element.getAttribute('data-viewport-scale')),
+    }));
+}
+async function closeMobileSidebar(page: Page) {
+  if ((page.viewportSize()?.width ?? 1280) < 768) {
+    const button = page.getByRole('button', { name: '收起侧栏', exact: true });
+    if (await button.isVisible()) await button.click();
+  }
+}
+
+test('uploads dropped images, rejects non-images and confirms replacement without changing a cancelled project', async ({
+  page,
+}) => {
+  await openEditor(page);
+  await expect(
+    page.getByRole('button', { name: '把户型图拖到这里，或点击选择文件' }),
+  ).toBeVisible();
+  await dropFile(
+    page,
+    'floorplan-a.jpg',
+    'image/jpeg',
+    await readFile('fixtures/floorplan-a.jpg'),
+  );
+  await uploadLoaded(page);
+  const original = await exportProject(page);
+  await dropFile(page, 'notes.txt', 'text/plain', Buffer.from('not an image'));
+  await expect(
+    page
+      .getByRole('region', { name: '编辑画布', exact: true })
+      .getByRole('alert'),
+  ).toContainText('JPG、PNG 或 WebP');
+  expect(await exportProject(page)).toEqual(original);
+  const dialogEvent = page.waitForEvent('dialog');
+  await dropFile(
+    page,
+    'floorplan-b.jpg',
+    'image/jpeg',
+    await readFile('fixtures/floorplan-b.jpg'),
+  );
+  const dialog = await dialogEvent;
+  expect(dialog.message()).toBe('替换当前底图？');
+  await dialog.dismiss();
+  await expect(
+    page
+      .getByRole('region', { name: '户型图画布', exact: true })
+      .getByText('正在处理户型图…'),
+  ).toBeHidden();
+  expect(await exportProject(page)).toEqual(original);
+});
+
+test('pastes screenshots through the same sanitization flow and leaves text-field pastes alone', async ({
+  page,
+}) => {
+  await openEditor(page);
+  const canvas = page.getByRole('region', { name: '户型图画布', exact: true });
+  await pasteFile(
+    page,
+    canvas,
+    'screenshot.jpg',
+    withExif(await readFile('fixtures/floorplan-a.jpg')),
+  );
+  await uploadLoaded(page);
+  const original = await exportProject(page);
+  const raster = Buffer.from(
+    original.background.imageDataUrl.split(',')[1],
+    'base64',
+  );
+  expect(raster.includes(Buffer.from('cadtest-private-metadata'))).toBe(false);
+  await page.getByRole('button', { name: '项目信息' }).click();
+  await pasteFile(
+    page,
+    page.getByRole('textbox', { name: '项目名称' }),
+    'other.jpg',
+    await readFile('fixtures/floorplan-b.jpg'),
+  );
+  await page.getByRole('button', { name: '关闭项目信息' }).click();
+  expect(await exportProject(page)).toEqual(original);
+});
+
+test('locks every viewport gesture, restores gestures after unlock and remembers the project setting', async ({
+  page,
+}) => {
+  await openEditor(page);
+  await uploadFixture(page);
+  await closeMobileSidebar(page);
+  const canvas = page.getByRole('region', { name: '户型图画布', exact: true });
+  await expect(canvas).toHaveAttribute('data-view-locked', 'true');
+  const bounds = await canvas.boundingBox();
+  if (!bounds) throw new Error('Missing canvas');
+  const x = Math.round(bounds.x + bounds.width / 2),
+    y = Math.round(bounds.y + bounds.height / 2);
+  await page.mouse.move(x, y);
+  const original = await canvasView(page);
+  await page.mouse.wheel(20, 30);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -20);
+  await page.keyboard.up('Control');
+  await page.keyboard.down('Space');
+  await page.mouse.down();
+  await page.mouse.move(x + 30, y + 20, { steps: 3 });
+  await page.mouse.up();
+  await page.keyboard.up('Space');
+  expect(await canvasView(page)).toEqual(original);
+  await page.getByRole('button', { name: '解锁视图' }).click();
+  await page.mouse.move(x, y);
+  await page.mouse.wheel(20, 30);
+  await expect
+    .poll(async () => (await canvasView(page)).x)
+    .toBeLessThan(original.x);
+  expect((await canvasView(page)).scale).toBe(original.scale);
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByLabel('上传户型图').setInputFiles('fixtures/floorplan-a.jpg');
+  await expect(canvas).toHaveAttribute('data-view-locked', 'true');
+  await expect.poll(() => canvasView(page)).toEqual(original);
+  await closeMobileSidebar(page);
+  await page.getByRole('button', { name: '解锁视图' }).click();
+  await page.mouse.move(x, y);
+  await page.mouse.wheel(20, 30);
+  await expect
+    .poll(async () => (await canvasView(page)).x)
+    .toBeLessThan(original.x);
+  await page.getByRole('button', { name: '锁定视图' }).click();
+  await page.getByRole('button', { name: '适应画布' }).click();
+  expect(await canvasView(page)).toEqual(original);
+  await page.reload();
+  await uploadLoaded(page);
+  await expect(canvas).toHaveAttribute('data-view-locked', 'true');
+  await page.getByRole('button', { name: '解锁视图' }).click();
+  await page.reload();
+  await uploadLoaded(page);
+  await expect(canvas).toHaveAttribute('data-view-locked', 'false');
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByLabel('上传户型图').setInputFiles('fixtures/floorplan-b.jpg');
+  await expect(canvas).toHaveAttribute('data-image-width', '1071');
+  await expect(canvas).toHaveAttribute('data-view-locked', 'true');
+});
+
+test('guides calibration in three steps, previews pixels, fills a 1280x800 window and supports folding the sidebar', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openEditor(page);
+  await uploadFixture(page);
+  const canvas = page.getByRole('region', { name: '户型图画布', exact: true });
+  const guide = page.getByRole('region', { name: '校准引导' });
+  await expect(guide.locator('[aria-current="step"]')).toContainText('找一条');
+  await expect(
+    page.getByText('尚未校准，尺寸仅供参考', { exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: '稍后再校准' }).click();
+  await expect(guide.getByText('已跳过，可随时回来校准。')).toBeVisible();
+  await page.getByRole('button', { name: '手动校准' }).click();
+  await expect(guide.locator('[aria-current="step"]')).toContainText(
+    '依次点击',
+  );
+  await pickImagePoint(page, fixture.top[0]);
+  const bounds = await canvas.boundingBox();
+  if (!bounds) throw new Error('Missing canvas');
+  const view = await canvasView(page);
+  await page.mouse.move(
+    bounds.x + view.x + fixture.top[1].x * view.scale,
+    bounds.y + view.y + fixture.top[1].y * view.scale,
+  );
+  await expect(page.getByLabel('校准像素长度')).toContainText('px');
+  const area = (bounds.width * bounds.height) / (1280 * 800);
+  expect(area).toBeGreaterThanOrEqual(0.7);
+  expect(
+    await page.evaluate(() => ({
+      width: document.documentElement.scrollWidth,
+      height: document.documentElement.scrollHeight,
+    })),
+  ).toEqual({ width: 1280, height: 800 });
+  await page.screenshot({
+    path: test.info().outputPath('editor-1280x800.png'),
+    scale: 'css',
+  });
+  await pickImagePoint(page, fixture.top[1]);
+  await expect(guide.locator('[aria-current="step"]')).toContainText(
+    '输入线上的数字',
+  );
+  await page.getByLabel('真实距离（mm）').fill('15040');
+  await page.getByRole('button', { name: '应用校准' }).click();
+  await expect(guide.getByRole('heading', { name: '✓ 已校准' })).toBeVisible();
+  await expect(
+    page.getByText('尚未校准，尺寸仅供参考', { exact: true }),
+  ).toBeHidden();
+  await page.getByRole('button', { name: '收起侧栏', exact: true }).click();
+  await expect(
+    page.getByRole('complementary', { name: '画布控件' }),
+  ).toBeHidden();
+  await expect.poll(async () => (await canvas.boundingBox())?.width).toBe(1280);
+  await page.getByRole('button', { name: '展开侧栏' }).click();
+  await expect(
+    page.getByRole('complementary', { name: '画布控件' }),
+  ).toBeVisible();
+  await expect(page.getByRole('status')).toHaveText('已保存到本机');
+  await page.reload();
+  await uploadLoaded(page);
+  await expect(page.getByRole('heading', { name: '✓ 已校准' })).toBeVisible();
 });

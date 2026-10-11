@@ -1,10 +1,11 @@
 'use client';
 
 import {
+  useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
-  type ChangeEvent,
   type FormEvent,
 } from 'react';
 import type { Project, Vec2 } from '@/model/types';
@@ -13,34 +14,74 @@ import { calibrationScale, pointDistance } from '@/geometry/canvas';
 import { pxToMm } from '@/geometry/units';
 import { Canvas2D } from './Canvas2D';
 import { loadImage, sanitizeFloorPlan } from './image';
+import {
+  calibrationIdentity,
+  imageIdentity,
+  readEditorUiSettings,
+  saveEditorUiSettings,
+  type EditorUiSettings,
+} from './ui-settings';
 
-export function EditorCanvas({
-  background,
-}: {
-  background: Project['background'];
-}) {
+const buttonClass =
+  'rounded-lg border border-stone-300 px-3 py-2 text-sm hover:bg-stone-50 disabled:opacity-40';
+
+export function EditorCanvas({ project }: { project: Project }) {
+  const background = project.background;
   const updateBackground = useProjectStore((state) => state.updateBackground);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const dragDepth = useRef(0);
+  const uploadRequest = useRef(0);
   const [loaded, setLoaded] = useState<{
     source: string;
     image?: HTMLImageElement;
     error?: string;
   } | null>(null);
+  const [settings, setSettings] = useState(() =>
+    readEditorUiSettings(project.id),
+  );
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => window.matchMedia('(min-width: 768px)').matches,
+  );
   const [visible, setVisible] = useState(true);
+  const [fitVersion, setFitVersion] = useState(0);
+  const [draggingFile, setDraggingFile] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deferredSource, setDeferredSource] = useState<string | null>(null);
   const [selection, setSelection] = useState<{
     source: string;
     points: Vec2[];
   } | null>(null);
   const calibrating = selection?.source === background.imageDataUrl;
   const points = calibrating && selection ? selection.points : [];
-  const uploadRequest = useRef(0);
+  const identity = useMemo(
+    () => calibrationIdentity(background.imageDataUrl, background.mmPerPixel),
+    [background.imageDataUrl, background.mmPerPixel],
+  );
+  const calibrated = Boolean(
+    background.imageDataUrl && settings.calibrations.includes(identity),
+  );
   const image =
     loaded?.source === background.imageDataUrl ? loaded.image : undefined;
   const imageError =
     loaded?.source === background.imageDataUrl ? loaded.error : undefined;
   const loading = Boolean(background.imageDataUrl && !image && !imageError);
+  const canCalibrate = Boolean(
+    image && visible && background.opacity > 0 && !uploading,
+  );
+  const step = calibrating ? (points.length === 2 ? 3 : 2) : 1;
+
+  const changeSettings = useCallback(
+    (change: (current: EditorUiSettings) => EditorUiSettings) => {
+      setSettings((current) => {
+        const next = change(current);
+        saveEditorUiSettings(project.id, next);
+        return next;
+      });
+    },
+    [project.id],
+  );
   useEffect(() => {
     const source = background.imageDataUrl;
     if (!source) return;
@@ -67,29 +108,80 @@ export function EditorCanvas({
     [],
   );
 
-  async function upload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = '';
-    if (!file) return;
-    const request = ++uploadRequest.current;
-    setUploading(true);
+  const upload = useCallback(
+    async (file: File) => {
+      const request = ++uploadRequest.current;
+      setUploading(true);
+      setError(null);
+      setMessage(null);
+      try {
+        const imageDataUrl = await sanitizeFloorPlan(file);
+        if (request !== uploadRequest.current) return;
+        if (background.imageDataUrl && !window.confirm('替换当前底图？'))
+          return;
+        updateBackground({
+          imageDataUrl,
+          mmPerPixel: 1,
+          offset: { x: 0, y: 0 },
+        });
+        const imageKey = imageIdentity(imageDataUrl);
+        changeSettings((current) => ({
+          locked: true,
+          calibrations: current.calibrations.filter(
+            (item) => !item.startsWith(`${imageKey}:`),
+          ),
+        }));
+        setVisible(true);
+        setFitVersion((current) => current + 1);
+        setSelection(null);
+        setDeferredSource(null);
+        setSidebarOpen(true);
+        setMessage('上传完成，请按右侧三步引导校准真实尺寸。');
+      } catch (error) {
+        if (request === uploadRequest.current)
+          setError(
+            error instanceof Error
+              ? error.message
+              : '图片处理失败，请重新上传。',
+          );
+      } finally {
+        if (request === uploadRequest.current) setUploading(false);
+      }
+    },
+    [background.imageDataUrl, updateBackground, changeSettings],
+  );
+  useEffect(() => {
+    function paste(event: ClipboardEvent) {
+      if (
+        event.defaultPrevented ||
+        (event.target instanceof HTMLElement &&
+          event.target.closest(
+            'input, textarea, select, [contenteditable="true"]',
+          ))
+      )
+        return;
+      const item = Array.from(event.clipboardData?.items ?? []).find(
+        (item) => item.kind === 'file',
+      );
+      const file = item?.getAsFile();
+      if (!file) return;
+      event.preventDefault();
+      void upload(file);
+    }
+    document.addEventListener('paste', paste);
+    return () => document.removeEventListener('paste', paste);
+  }, [upload]);
+
+  function cancelCalibration() {
+    setSelection(null);
+    setError(null);
+  }
+  function beginCalibration() {
+    setSelection({ source: background.imageDataUrl, points: [] });
     setError(null);
     setMessage(null);
-    try {
-      const imageDataUrl = await sanitizeFloorPlan(file);
-      if (request !== uploadRequest.current) return;
-      updateBackground({ imageDataUrl, mmPerPixel: 1, offset: { x: 0, y: 0 } });
-      setVisible(true);
-      setSelection(null);
-      setMessage('上传完成，请先手动校准比例尺。');
-    } catch (error) {
-      if (request === uploadRequest.current)
-        setError(
-          error instanceof Error ? error.message : '图片处理失败，请重新上传。',
-        );
-    } finally {
-      if (request === uploadRequest.current) setUploading(false);
-    }
+    setDeferredSource(null);
+    if (window.matchMedia('(max-width: 767px)').matches) setSidebarOpen(false);
   }
   function calibrate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -100,6 +192,14 @@ export function EditorCanvas({
       );
       const mmPerPixel = calibrationScale(points[0], points[1], distance);
       updateBackground({ mmPerPixel });
+      const marker = calibrationIdentity(background.imageDataUrl, mmPerPixel);
+      changeSettings((current) => ({
+        ...current,
+        calibrations: [
+          ...current.calibrations.filter((item) => item !== marker),
+          marker,
+        ].slice(-100),
+      }));
       setSelection(null);
       setError(null);
       setMessage(
@@ -111,190 +211,332 @@ export function EditorCanvas({
       );
     }
   }
-  function cancelCalibration() {
-    setSelection(null);
-    setError(null);
-  }
-  const canCalibrate = Boolean(
-    image && visible && background.opacity > 0 && !uploading,
-  );
 
   return (
     <section
       aria-label="编辑画布"
-      className="space-y-5 rounded-2xl border border-stone-200 bg-white p-4 sm:p-6"
+      className="relative flex min-h-0 flex-1 overflow-hidden"
       onKeyDown={(event) => {
         if (event.key === 'Escape') cancelCalibration();
       }}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-medium">户型图编辑</h2>
-          <p className="mt-1 text-sm text-stone-600">
-            上传底图，校准比例尺后开始规划空间。
-          </p>
-        </div>
-        <label className="rounded-lg border border-stone-300 px-3 py-2 text-sm">
-          上传户型图
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            disabled={uploading}
-            onChange={upload}
-            className="mt-2 block min-w-0 max-w-full text-sm"
-          />
-        </label>
-      </div>
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={visible}
-            disabled={!image}
-            onChange={(event) => {
-              setVisible(event.currentTarget.checked);
-              cancelCalibration();
-            }}
-          />
-          显示户型图
-        </label>
-        <label className="flex items-center gap-3">
-          底图透明度
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={background.opacity}
-            disabled={!image || uploading}
-            onChange={(event) =>
-              updateBackground({ opacity: Number(event.currentTarget.value) })
-            }
-          />
-          <span className="w-10 tabular-nums">
-            {Math.round(background.opacity * 100)}%
-          </span>
-        </label>
-        <button
-          type="button"
-          disabled={!canCalibrate}
-          className="rounded-lg bg-emerald-800 px-4 py-2 text-white disabled:opacity-40"
-          onClick={() => {
-            setSelection({ source: background.imageDataUrl, points: [] });
-            setError(null);
-            setMessage(null);
+      <input
+        ref={fileInput}
+        type="file"
+        aria-label="上传户型图"
+        accept="image/jpeg,image/png,image/webp"
+        disabled={uploading}
+        className="sr-only"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = '';
+          if (file) void upload(file);
+        }}
+      />
+      <div
+        className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+        onDragEnter={(event) => {
+          if (event.dataTransfer.types.includes('Files')) {
+            event.preventDefault();
+            dragDepth.current += 1;
+            setDraggingFile(true);
+          }
+        }}
+        onDragOver={(event) => {
+          if (event.dataTransfer.types.includes('Files')) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+          }
+        }}
+        onDragLeave={() => {
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (!dragDepth.current) setDraggingFile(false);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          dragDepth.current = 0;
+          setDraggingFile(false);
+          const file = event.dataTransfer.files[0];
+          if (file) void upload(file);
+        }}
+      >
+        <Canvas2D
+          background={background}
+          image={image}
+          visible={visible}
+          points={points}
+          selecting={canCalibrate && calibrating && points.length < 2}
+          fitVersion={fitVersion}
+          locked={settings.locked}
+          calibrated={calibrated}
+          draggingFile={draggingFile}
+          uploading={uploading || loading}
+          sidebarOpen={sidebarOpen}
+          onChooseFile={() => fileInput.current?.click()}
+          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          onToggleLock={() =>
+            changeSettings((current) => ({
+              ...current,
+              locked: !current.locked,
+            }))
+          }
+          onPick={(point) => {
+            if (
+              points.length === 1 &&
+              window.matchMedia('(max-width: 767px)').matches
+            )
+              setSidebarOpen(true);
+            setSelection((current) =>
+              current?.source === background.imageDataUrl &&
+              current.points.length < 2
+                ? { ...current, points: [...current.points, point] }
+                : current,
+            );
           }}
-        >
-          手动校准
-        </button>
-        <span className="tabular-nums text-stone-600">
-          比例尺：1 px = {background.mmPerPixel.toFixed(6)} mm
-        </span>
-      </div>
-      <p className="text-xs text-stone-500">
-        支持 JPG / PNG / WebP，最大 20
-        MB。图片仅保存在当前浏览器，上传时会去除原图的 EXIF 信息。
-      </p>
-      {(uploading || loading) && (
-        <p aria-live="polite" className="text-sm text-stone-600">
-          {uploading ? '正在处理户型图…' : '正在读取户型图…'}
-        </p>
-      )}
-      {(error || imageError) && (
-        <p
-          role="alert"
-          className="rounded-lg bg-red-50 p-3 text-sm text-red-800"
-        >
-          {error || imageError}
-        </p>
-      )}
-      {message && (
-        <p
-          aria-live="polite"
-          className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900"
-        >
-          {message}
-        </p>
-      )}
-      {calibrating && (
-        <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <p className="text-sm text-amber-950">
-            {points.length < 2
-              ? `在尺寸线两端点击，选择第 ${points.length + 1} 个点。按 Esc 取消。`
-              : '输入这两个点之间的真实距离，单位为毫米。重新校准只改变底图比例尺。'}
+        />
+        {(error || imageError) && (
+          <p
+            role="alert"
+            className="absolute left-4 right-4 top-16 z-50 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+          >
+            {error || imageError}
           </p>
-          {points.length === 2 && (
-            <form
-              onSubmit={calibrate}
-              className="flex flex-wrap items-end gap-3"
-            >
-              <label className="flex flex-col gap-2 text-sm">
-                真实距离（mm）
-                <input
-                  name="distance"
-                  type="number"
-                  inputMode="decimal"
-                  step="any"
-                  placeholder="例如 15040"
-                  className="w-48 rounded-lg border border-amber-300 bg-white px-3 py-2"
-                  required
-                />
-              </label>
-              <button
-                type="submit"
-                className="rounded-lg bg-emerald-800 px-4 py-2 text-sm text-white"
-              >
-                应用校准
-              </button>
-              <span
-                aria-label="当前两点距离"
-                className="py-2 text-sm tabular-nums"
-              >
-                当前两点距离：
-                {pxToMm(
-                  pointDistance(points[0], points[1]),
-                  background.mmPerPixel,
-                ).toFixed(2)}{' '}
-                mm
-              </span>
-            </form>
-          )}
-          <div className="flex gap-5 text-sm">
+        )}
+      </div>
+      {sidebarOpen && (
+        <aside
+          id="editor-sidebar"
+          aria-label="画布控件"
+          className="absolute inset-y-0 right-0 z-30 w-[280px] shrink-0 space-y-5 overflow-y-auto border-l border-stone-200 bg-white p-4 shadow-lg md:relative md:shadow-none"
+        >
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">户型图编辑</h2>
             <button
               type="button"
-              className="text-amber-950 underline"
-              onClick={() => {
-                setSelection({ source: background.imageDataUrl, points: [] });
-                setError(null);
-              }}
+              aria-label="收起侧栏"
+              className="text-xs text-stone-500 underline"
+              onClick={() => setSidebarOpen(false)}
             >
-              重新选点
-            </button>
-            <button
-              type="button"
-              className="text-amber-950 underline"
-              onClick={cancelCalibration}
-            >
-              取消校准
+              收起
             </button>
           </div>
-        </div>
+          <button
+            type="button"
+            className={`${buttonClass} w-full`}
+            disabled={uploading}
+            onClick={() => fileInput.current?.click()}
+          >
+            {background.imageDataUrl ? '替换户型图' : '选择户型图'}
+          </button>
+          <p className="text-xs leading-relaxed text-stone-500">
+            支持拖入图片或 Cmd / Ctrl + V 粘贴截图。JPG / PNG / WebP，最大 20
+            MB；仅保存在当前浏览器，已去除源图 EXIF。
+          </p>
+          <div className="space-y-4 border-y border-stone-100 py-4 text-sm">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={visible}
+                disabled={!image}
+                onChange={(event) => {
+                  setVisible(event.currentTarget.checked);
+                  cancelCalibration();
+                }}
+              />
+              显示户型图
+            </label>
+            <label className="flex flex-wrap items-center justify-between gap-2">
+              底图透明度
+              <span className="tabular-nums text-stone-500">
+                {Math.round(background.opacity * 100)}%
+              </span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={background.opacity}
+                disabled={!image || uploading}
+                className="w-full accent-emerald-800"
+                onChange={(event) =>
+                  updateBackground({
+                    opacity: Number(event.currentTarget.value),
+                  })
+                }
+              />
+            </label>
+          </div>
+          {background.imageDataUrl ? (
+            <section
+              aria-label="校准引导"
+              className={`space-y-3 rounded-xl border p-3 ${calibrated && !calibrating ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}
+            >
+              <h3 className="text-sm font-semibold">
+                {calibrated && !calibrating ? '✓ 已校准' : '校准真实尺寸'}
+              </h3>
+              {calibrated && !calibrating ? (
+                <>
+                  <p className="text-xs leading-relaxed text-emerald-900">
+                    1 像素 = {background.mmPerPixel.toFixed(6)}{' '}
+                    mm。已有几何体的毫米坐标保持不变。
+                  </p>
+                  <button
+                    type="button"
+                    disabled={!canCalibrate}
+                    className={buttonClass}
+                    onClick={beginCalibration}
+                  >
+                    重新校准
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs leading-relaxed text-amber-950">
+                    告诉系统图上的距离对应多少毫米，之后画出的墙才有真实尺寸。
+                  </p>
+                  {deferredSource === background.imageDataUrl &&
+                  !calibrating ? (
+                    <p className="text-xs text-stone-600">
+                      已跳过，可随时回来校准。
+                    </p>
+                  ) : (
+                    <ol className="space-y-2 text-xs leading-relaxed">
+                      {[
+                        '在图上找一条标了数字的尺寸线，例如顶部的 15040。',
+                        '依次点击这条线的两端。',
+                        '输入线上的数字，单位：毫米。',
+                      ].map((text, index) => (
+                        <li
+                          key={text}
+                          aria-current={step === index + 1 ? 'step' : undefined}
+                          className={`rounded-lg p-2 ${step === index + 1 ? 'bg-amber-200 font-medium text-amber-950' : 'text-stone-500'}`}
+                        >
+                          <span className="mr-1">{['①', '②', '③'][index]}</span>
+                          {text}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                  {calibrating && points.length < 2 && (
+                    <p
+                      aria-live="polite"
+                      className="text-xs font-medium text-amber-900"
+                    >
+                      请点击第 {points.length + 1} 个端点；按 Esc 取消。
+                    </p>
+                  )}
+                  {!calibrating && (
+                    <button
+                      type="button"
+                      aria-label="手动校准"
+                      disabled={!canCalibrate}
+                      className={`${buttonClass} w-full bg-white`}
+                      onClick={beginCalibration}
+                    >
+                      开始选点
+                    </button>
+                  )}
+                </>
+              )}
+              {calibrating && points.length === 2 && (
+                <form onSubmit={calibrate} className="space-y-3">
+                  <label className="flex flex-col gap-2 text-sm">
+                    真实距离（mm）
+                    <input
+                      name="distance"
+                      type="number"
+                      inputMode="decimal"
+                      step="any"
+                      placeholder="例如 15040"
+                      required
+                      autoFocus
+                      className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2"
+                    />
+                  </label>
+                  <span
+                    aria-label="当前两点距离"
+                    className="block text-xs tabular-nums"
+                  >
+                    当前两点距离：
+                    {pxToMm(
+                      pointDistance(points[0], points[1]),
+                      background.mmPerPixel,
+                    ).toFixed(2)}{' '}
+                    mm
+                  </span>
+                  <button
+                    type="submit"
+                    className="w-full rounded-lg bg-emerald-800 px-3 py-2 text-sm text-white"
+                  >
+                    应用校准
+                  </button>
+                </form>
+              )}
+              {calibrating && (
+                <div className="flex flex-wrap gap-3 text-xs">
+                  <button
+                    type="button"
+                    className="text-amber-950 underline"
+                    onClick={beginCalibration}
+                  >
+                    重新选点
+                  </button>
+                  <button
+                    type="button"
+                    className="text-amber-950 underline"
+                    onClick={cancelCalibration}
+                  >
+                    取消校准
+                  </button>
+                </div>
+              )}
+              {!calibrated && (
+                <button
+                  type="button"
+                  className="text-xs text-stone-500 underline"
+                  onClick={() => {
+                    cancelCalibration();
+                    setDeferredSource(background.imageDataUrl);
+                  }}
+                >
+                  稍后再校准
+                </button>
+              )}
+            </section>
+          ) : (
+            <p className="rounded-lg bg-stone-50 p-3 text-xs leading-relaxed text-stone-500">
+              先上传户型图，再按引导校准尺寸。暂未提供自动识别和绘制工具。
+            </p>
+          )}
+          {(uploading || loading) && (
+            <p aria-live="polite" className="text-xs text-stone-500">
+              {uploading ? '正在处理户型图…' : '正在读取户型图…'}
+            </p>
+          )}
+          {message && (
+            <p
+              aria-live="polite"
+              className="text-xs leading-relaxed text-emerald-800"
+            >
+              {message}
+            </p>
+          )}
+          <section
+            aria-label="项目数据概览"
+            className="space-y-2 text-xs text-stone-500"
+          >
+            <h3 className="font-medium text-stone-700">项目数据</h3>
+            <p>
+              {project.walls.length} 面墙 · {project.openings.length} 个门窗 ·{' '}
+              {project.rooms.length} 个房间 · {project.furniture.length} 件家具
+              · {project.anchors.length} 个锚点
+            </p>
+            <p className="leading-relaxed">
+              墙体、门窗、房间和家具的绘制工具将在后续版本提供。
+            </p>
+          </section>
+        </aside>
       )}
-      <Canvas2D
-        background={background}
-        image={image}
-        visible={visible}
-        selecting={canCalibrate && calibrating && points.length < 2}
-        points={points}
-        onPick={(point) =>
-          setSelection((current) =>
-            current?.source === background.imageDataUrl &&
-            current.points.length < 2
-              ? { ...current, points: [...current.points, point] }
-              : current,
-          )
-        }
-      />
     </section>
   );
 }
