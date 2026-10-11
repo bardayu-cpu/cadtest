@@ -8,8 +8,8 @@
 
 ## 记录
 
-- 2026-10-11 | #1 | 使用 Next.js 16、Tailwind CSS 4；最低 Node 20.9，验证版本固定为 20.11.1 | 与当前本地运行环境兼容，依赖通过 package-lock.json 锁定。
-- 2026-10-11 | #1 | 使用 Vitest 4.1.11 与 Vite 6 | 使用已修复的测试工具版本，并兼容 Node 20.11.1；后续升级 Node 后可独立升级 Vite。
-- 2026-10-11 | #1 | 锁定 typescript-eslint 8.55.0 | 避免新版传递依赖要求 Node 20.19；升级运行时后可移除 override。
+- 2026-10-11 | #1 | 使用 Next.js 16、Tailwind CSS 4；本地和 CI 通过 .nvmrc 使用 Node 24 LTS | 使用维护中的运行时，大版本内补丁可更新；engines 范围遵循测试工具要求，Node 22 最低为 22.12.0。
+- 2026-10-11 | #1 | 使用 Vitest ^5.0.3 与 Vite ^8.3.4 | 使用当前版本的正常语义化范围，不为旧 Node 降级；安装结果通过 package-lock.json 锁定。
+- 2026-10-11 | #1 | 不使用 typescript-eslint 或 Vite override | 由上游依赖范围解析兼容版本，避免人为锁定传递依赖阻碍后续升级。
 - 2026-10-11 | #1 | 未实现的 API POST 返回 501、模块保留空导出 | 清楚区分占位与可用功能，避免提前实现后续 Issue。
 - 2026-10-11 | #1 | lint 同时检查 ESLint 与 Prettier；单测和 E2E 放在不同测试目录 | CI 可检查格式并避免混用两种测试运行器。

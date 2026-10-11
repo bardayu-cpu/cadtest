@@ -6,7 +6,12 @@
 
 ## 本地运行
 
-需要 Node.js **20.9.0 或更高版本**和 npm。`.nvmrc` 固定本次验证使用的 Node.js 20.11.1；使用 nvm 时可运行 `nvm install && nvm use`。
+推荐使用 **Node.js 24 LTS** 和 npm；`.nvmrc` 指定大版本 `24`，本地和 CI 使用同一版本线。测试工具的 Node 22 最低要求为 **22.12.0**，完整支持范围见 `package.json` 的 `engines.node`。使用 nvm 时先运行：
+
+```bash
+nvm install
+nvm use
+```
 
 ```bash
 npm install
